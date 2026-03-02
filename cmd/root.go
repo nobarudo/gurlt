@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atotto/clipboard" // ▼ 追加: クリップボード操作用の標準的ライブラリ
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -73,7 +73,11 @@ type model struct {
 	terminalHeight int
 	normalContent  string
 	rawContent     string
-	copyStatus     string // ▼ 追加: コピーが成功したかどうかのメッセージを保持
+
+	// ▼ 変更: footerMsg に名前を変え、保存用の状態を追加
+	footerMsg string
+	saveInput textinput.Model
+	isSaving  bool
 
 	responseStatus string
 	isLoading      bool
@@ -108,11 +112,17 @@ func initialModel(reqUrl, method string) model {
 	b.SetHeight(5)
 	b.SetWidth(50)
 
+	// ▼ 追加: 保存ファイル名入力欄のセットアップ
+	sInput := textinput.New()
+	sInput.Placeholder = "output.txt"
+	sInput.Prompt = "Save to: "
+
 	return model{
 		methodInput: m,
 		urlInput:    u,
 		headerInput: h,
 		bodyInput:   b,
+		saveInput:   sInput,
 		focusIndex:  1,
 	}
 }
@@ -207,6 +217,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.responseView.Width = m.terminalWidth
 
 	case tea.KeyMsg:
+		// ▼ 追加: 保存モード中のキー操作を優先して処理
+		if m.isSaving {
+			switch msg.String() {
+			case "esc", "ctrl+c":
+				m.isSaving = false // キャンセルして元の画面に戻る
+				m.saveInput.Blur()
+				return m, nil
+			case "enter":
+				filename := strings.TrimSpace(m.saveInput.Value())
+				if filename != "" {
+					// os.WriteFile を使うと、現在のカレントディレクトリを基準に保存されます
+					err := os.WriteFile(filename, []byte(m.rawContent), 0644)
+					if err != nil {
+						m.footerMsg = fmt.Sprintf(" [❌ Save failed: %v]", err)
+					} else {
+						m.footerMsg = fmt.Sprintf(" [✅ Saved to %s]", filename)
+					}
+				}
+				m.isSaving = false
+				m.saveInput.Blur()
+				return m, nil
+			default:
+				// その他のキー入力（文字入力）は textinput に流す
+				m.saveInput, cmd = m.saveInput.Update(msg)
+				return m, cmd
+			}
+		}
+
+		// ▼ 通常時のキー操作
 		switch msg.String() {
 		case "ctrl+c", "esc":
 			return m, tea.Quit
@@ -226,21 +265,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-		// ▼ 追加: Raw画面の時に 'c' を押すとクリップボードにコピー
 		case "c":
 			if m.showRawView && m.rawContent != "" && m.rawContent != "No request sent yet." {
 				err := clipboard.WriteAll(m.rawContent)
 				if err != nil {
-					// Linux等でxclipがなく失敗した場合も優しくエラーを出す
-					m.copyStatus = " [❌ Copy failed (Requires xclip/xsel on Linux)]"
+					m.footerMsg = " [❌ Copy failed (Requires xclip/xsel on Linux)]"
 				} else {
-					m.copyStatus = " [✅ Copied to clipboard!]"
+					m.footerMsg = " [✅ Copied to clipboard!]"
 				}
+			}
+
+		// ▼ 追加: 's' キーで保存モードに入る
+		case "s":
+			if m.showRawView && m.rawContent != "" && m.rawContent != "No request sent yet." {
+				m.isSaving = true
+				m.saveInput.Focus()
+				m.saveInput.SetValue("") // 以前の入力をクリア
+				m.footerMsg = ""         // メッセージもクリア
+				return m, textinput.Blink
 			}
 
 		case "ctrl+r":
 			m.showRawView = !m.showRawView
-			m.copyStatus = "" // 画面を切り替えたらコピー状態をリセット
+			m.footerMsg = ""
+			m.isSaving = false // 画面を切り替えたら保存状態もリセット
 			if m.showRawView {
 				m.responseView.Height = m.terminalHeight - 4
 				m.responseView.SetContent(m.rawContent)
@@ -260,7 +308,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.isLoading = true
 				m.err = nil
 				m.responseStatus = ""
-				m.copyStatus = "" // 新しいリクエストを送る時もリセット
+				m.footerMsg = ""
 				m.responseView.SetContent("⏳ Loading...")
 				return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value())
 			}
@@ -329,13 +377,18 @@ func (m model) View() string {
 		return "\n  Initializing..."
 	}
 
-	// ▼ 変更: Raw画面のフッターにコピー案内と結果メッセージを追加
 	if m.showRawView {
 		s := "[ Raw View (Use ↑/↓/PgUp/PgDn to scroll) ]\n"
 		s += "----------------------------------------\n"
 		s += m.responseView.View() + "\n"
 		s += "----------------------------------------\n"
-		s += "[c] Copy to Clipboard" + m.copyStatus + "   [Ctrl+R] Back to Form   [Esc] Quit\n"
+
+		// ▼ 追加: 保存モード中かそうでないかでフッターを切り替える
+		if m.isSaving {
+			s += m.saveInput.View() + "   [Enter] Confirm   [Esc] Cancel\n"
+		} else {
+			s += "[c] Copy   [s] Save to File" + m.footerMsg + "   [Ctrl+R] Back to Form   [Esc] Quit\n"
+		}
 		return s
 	}
 
