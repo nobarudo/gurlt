@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard" // ▼ 追加: クリップボード操作用の標準的ライブラリ
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -22,11 +25,11 @@ var rootCmd = &cobra.Command{
 	Short: "A TUI-based HTTP client",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		url := ""
+		reqUrl := ""
 		if len(args) > 0 {
-			url = args[0]
+			reqUrl = args[0]
 		}
-		p := tea.NewProgram(initialModel(url, method), tea.WithAltScreen())
+		p := tea.NewProgram(initialModel(reqUrl, method), tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
 			return err
 		}
@@ -50,32 +53,41 @@ func init() {
 // ==========================================
 
 type responseMsg struct {
-	status string
-	body   string
-	err    error
+	status     string
+	body       string
+	rawContent string
+	err        error
 }
 
 type model struct {
 	methodInput  textinput.Model
 	urlInput     textinput.Model
 	headerInput  textarea.Model
-	responseView viewport.Model // ▼ 追加: レスポンス表示用のビューポート
-	focusIndex   int            // 0: Method, 1: URL, 2: Header, 3: Viewport(Scroll)
-	ready        bool           // 画面サイズが取得できて初期化が完了したか
+	bodyInput    textarea.Model
+	responseView viewport.Model
+	focusIndex   int
+	ready        bool
+
+	showRawView    bool
+	terminalWidth  int
+	terminalHeight int
+	normalContent  string
+	rawContent     string
+	copyStatus     string // ▼ 追加: コピーが成功したかどうかのメッセージを保持
 
 	responseStatus string
 	isLoading      bool
 	err            error
 }
 
-func initialModel(url, method string) model {
+func initialModel(reqUrl, method string) model {
 	m := textinput.New()
 	m.Placeholder = "GET, POST, PUT, DELETE..."
 	m.SetValue(method)
 
 	u := textinput.New()
 	u.Placeholder = "https://api.example.com"
-	u.SetValue(url)
+	u.SetValue(reqUrl)
 	u.Focus()
 
 	h := textarea.New()
@@ -86,14 +98,21 @@ func initialModel(url, method string) model {
 
 	defaultHeaders := "User-Agent: gurlt/0.1.0\nAccept: */*"
 	if method == "POST" || method == "PUT" || method == "PATCH" {
-		defaultHeaders += "\nContent-Type: application/json"
+		defaultHeaders += "\nContent-Type: application/x-www-form-urlencoded"
 	}
 	h.SetValue(defaultHeaders)
+
+	b := textarea.New()
+	b.Placeholder = "name=taro\nage=20"
+	b.ShowLineNumbers = true
+	b.SetHeight(5)
+	b.SetWidth(50)
 
 	return model{
 		methodInput: m,
 		urlInput:    u,
 		headerInput: h,
+		bodyInput:   b,
 		focusIndex:  1,
 	}
 }
@@ -102,9 +121,29 @@ func (m model) Init() tea.Cmd {
 	return tea.Batch(textinput.Blink, textarea.Blink)
 }
 
-func sendRequest(method, url, headers string) tea.Cmd {
+func sendRequest(method, reqUrl, headers, body string) tea.Cmd {
 	return func() tea.Msg {
-		req, err := http.NewRequest(method, url, nil)
+		var reqBody io.Reader
+
+		if body != "" {
+			form := url.Values{}
+			lines := strings.Split(body, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				parts := strings.SplitN(line, "=", 2)
+				if len(parts) == 2 {
+					form.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+				} else {
+					form.Add(strings.TrimSpace(parts[0]), "")
+				}
+			}
+			reqBody = strings.NewReader(form.Encode())
+		}
+
+		req, err := http.NewRequest(method, reqUrl, reqBody)
 		if err != nil {
 			return responseMsg{err: err}
 		}
@@ -117,6 +156,8 @@ func sendRequest(method, url, headers string) tea.Cmd {
 			}
 		}
 
+		reqBytes, _ := httputil.DumpRequestOut(req, true)
+
 		client := &http.Client{Timeout: 10 * time.Second}
 		res, err := client.Do(req)
 		if err != nil {
@@ -124,11 +165,15 @@ func sendRequest(method, url, headers string) tea.Cmd {
 		}
 		defer res.Body.Close()
 
+		resBytes, _ := httputil.DumpResponse(res, true)
 		bodyBytes, _ := io.ReadAll(res.Body)
 
+		rawStr := fmt.Sprintf("%s\n\n%s\n\n%s", reqUrl, string(reqBytes), string(resBytes))
+
 		return responseMsg{
-			status: res.Status,
-			body:   string(bodyBytes),
+			status:     res.Status,
+			body:       string(bodyBytes),
+			rawContent: rawStr,
 		}
 	}
 }
@@ -138,26 +183,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-
-	// ▼ 追加: ターミナルのサイズ変更イベント（起動時にも必ず1回呼ばれます）
 	case tea.WindowSizeMsg:
-		// 上部の入力欄などが占有する高さ（約17行分）を引いて、残りをスクロール領域にする
-		headerHeight := 17
-		viewportHeight := msg.Height - headerHeight
-		if viewportHeight < 0 {
-			viewportHeight = 0
-		}
+		m.terminalWidth = msg.Width
+		m.terminalHeight = msg.Height
 
 		if !m.ready {
-			// 初回起動時のビューポート初期化
-			m.responseView = viewport.New(msg.Width, viewportHeight)
-			m.responseView.SetContent("Ready to send request.\nPress Ctrl+S to fetch.")
+			m.responseView = viewport.New(msg.Width, 1)
+			m.normalContent = "Ready to send request.\nPress Ctrl+S to fetch."
+			m.rawContent = "No request sent yet."
+			m.responseView.SetContent(m.normalContent)
 			m.ready = true
-		} else {
-			// ターミナルがリサイズされた時に幅と高さを追従させる
-			m.responseView.Width = msg.Width
-			m.responseView.Height = viewportHeight
 		}
+
+		if m.showRawView {
+			m.responseView.Height = m.terminalHeight - 4
+		} else {
+			h := m.terminalHeight - 24
+			if h < 0 {
+				h = 0
+			}
+			m.responseView.Height = h
+		}
+		m.responseView.Width = m.terminalWidth
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -165,22 +212,58 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "tab":
-			m.focusIndex++
-			if m.focusIndex > 3 { // ▼ 項目が4つ（Viewport含む）になったので > 3 に変更
-				m.focusIndex = 0
+			if !m.showRawView {
+				m.focusIndex++
+				if m.focusIndex > 4 {
+					m.focusIndex = 0
+				}
 			}
 		case "shift+tab":
-			m.focusIndex--
-			if m.focusIndex < 0 {
-				m.focusIndex = 3
+			if !m.showRawView {
+				m.focusIndex--
+				if m.focusIndex < 0 {
+					m.focusIndex = 4
+				}
 			}
 
+		// ▼ 追加: Raw画面の時に 'c' を押すとクリップボードにコピー
+		case "c":
+			if m.showRawView && m.rawContent != "" && m.rawContent != "No request sent yet." {
+				err := clipboard.WriteAll(m.rawContent)
+				if err != nil {
+					// Linux等でxclipがなく失敗した場合も優しくエラーを出す
+					m.copyStatus = " [❌ Copy failed (Requires xclip/xsel on Linux)]"
+				} else {
+					m.copyStatus = " [✅ Copied to clipboard!]"
+				}
+			}
+
+		case "ctrl+r":
+			m.showRawView = !m.showRawView
+			m.copyStatus = "" // 画面を切り替えたらコピー状態をリセット
+			if m.showRawView {
+				m.responseView.Height = m.terminalHeight - 4
+				m.responseView.SetContent(m.rawContent)
+			} else {
+				h := m.terminalHeight - 24
+				if h < 0 {
+					h = 0
+				}
+				m.responseView.Height = h
+				m.responseView.SetContent(m.normalContent)
+			}
+			m.responseView.GotoTop()
+			return m, nil
+
 		case "ctrl+s":
-			m.isLoading = true
-			m.err = nil
-			m.responseStatus = ""
-			m.responseView.SetContent("⏳ Loading...") // ロード中の表示
-			return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value())
+			if !m.showRawView {
+				m.isLoading = true
+				m.err = nil
+				m.responseStatus = ""
+				m.copyStatus = "" // 新しいリクエストを送る時もリセット
+				m.responseView.SetContent("⏳ Loading...")
+				return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value())
+			}
 		}
 
 	case responseMsg:
@@ -188,37 +271,52 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.responseStatus = msg.status
 		if msg.err == nil {
-			m.responseView.SetContent(msg.body) // ▼ 取得したHTMLやJSONをそのままViewportに流し込む！
-			m.responseView.GotoTop()            // 新しいレスポンスが来たら一番上までスクロールを戻す
+			m.normalContent = msg.body
+			m.rawContent = msg.rawContent
+		} else {
+			m.normalContent = fmt.Sprintf("Error: %v", msg.err)
+			m.rawContent = fmt.Sprintf("Error: %v", msg.err)
 		}
+
+		if m.showRawView {
+			m.responseView.SetContent(m.rawContent)
+		} else {
+			m.responseView.SetContent(m.normalContent)
+		}
+		m.responseView.GotoTop()
 		return m, nil
 	}
 
-	// Focus/Blur の切り替え
-	m.methodInput.Blur()
-	m.urlInput.Blur()
-	m.headerInput.Blur()
+	if !m.showRawView {
+		m.methodInput.Blur()
+		m.urlInput.Blur()
+		m.headerInput.Blur()
+		m.bodyInput.Blur()
 
-	if m.focusIndex == 0 {
-		m.methodInput.Focus()
-	} else if m.focusIndex == 1 {
-		m.urlInput.Focus()
-	} else if m.focusIndex == 2 {
-		m.headerInput.Focus()
+		if m.focusIndex == 0 {
+			m.methodInput.Focus()
+		} else if m.focusIndex == 1 {
+			m.urlInput.Focus()
+		} else if m.focusIndex == 2 {
+			m.headerInput.Focus()
+		} else if m.focusIndex == 3 {
+			m.bodyInput.Focus()
+		}
+
+		m.methodInput, cmd = m.methodInput.Update(msg)
+		cmds = append(cmds, cmd)
+
+		m.urlInput, cmd = m.urlInput.Update(msg)
+		cmds = append(cmds, cmd)
+
+		m.headerInput, cmd = m.headerInput.Update(msg)
+		cmds = append(cmds, cmd)
+
+		m.bodyInput, cmd = m.bodyInput.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
-	// 選択中の入力欄にキーボード操作を流す
-	m.methodInput, cmd = m.methodInput.Update(msg)
-	cmds = append(cmds, cmd)
-
-	m.urlInput, cmd = m.urlInput.Update(msg)
-	cmds = append(cmds, cmd)
-
-	m.headerInput, cmd = m.headerInput.Update(msg)
-	cmds = append(cmds, cmd)
-
-	// ▼ フォーカスが Viewport (3) に合っている時だけ、上下キーでスクロールできるようにする
-	if m.focusIndex == 3 {
+	if m.focusIndex == 4 || m.showRawView {
 		m.responseView, cmd = m.responseView.Update(msg)
 		cmds = append(cmds, cmd)
 	}
@@ -231,9 +329,18 @@ func (m model) View() string {
 		return "\n  Initializing..."
 	}
 
+	// ▼ 変更: Raw画面のフッターにコピー案内と結果メッセージを追加
+	if m.showRawView {
+		s := "[ Raw View (Use ↑/↓/PgUp/PgDn to scroll) ]\n"
+		s += "----------------------------------------\n"
+		s += m.responseView.View() + "\n"
+		s += "----------------------------------------\n"
+		s += "[c] Copy to Clipboard" + m.copyStatus + "   [Ctrl+R] Back to Form   [Esc] Quit\n"
+		return s
+	}
+
 	s := "Welcome to gurlt!\nHow to use gurlt : gurlt -h\n\n"
 
-	// 入力中かどうかの目印（>）をつける親切設計
 	if m.focusIndex == 0 {
 		s += fmt.Sprintf("> Method: %s\n", m.methodInput.View())
 	} else {
@@ -251,32 +358,36 @@ func (m model) View() string {
 	} else {
 		s += "  Headers:\n"
 	}
-	s += m.headerInput.View() + "\n"
+	s += m.headerInput.View() + "\n\n"
+
+	if m.focusIndex == 3 {
+		s += "> Params (key=value):\n"
+	} else {
+		s += "  Params (key=value):\n"
+	}
+	s += m.bodyInput.View() + "\n"
 
 	s += "----------------------------------------\n"
 
-	// ステータスとレスポンスの表示
 	if m.err != nil {
 		s += fmt.Sprintf("❌ Error: %v\n", m.err)
 	} else if m.responseStatus != "" {
 		s += fmt.Sprintf("✅ Status: %s\n", m.responseStatus)
 	} else {
-		s += "\n" // 空白合わせ
+		s += "\n"
 	}
 
 	s += "----------------------------------------\n"
 
-	// ▼ Viewport（レスポンス本文）の描画。フォーカスされている時は目立たせる
-	if m.focusIndex == 3 {
+	if m.focusIndex == 4 {
 		s += "[ Response Body (Use ↑/↓/PgUp/PgDn to scroll) ]\n"
 	} else {
 		s += "[ Response Body ]\n"
 	}
 	s += m.responseView.View() + "\n"
 
-	// フッター
 	s += "----------------------------------------\n"
-	s += "[Tab] Focus   [Ctrl+S] Send   [Esc] Quit\n"
+	s += "[Tab] Focus  [Ctrl+S] Send  [Ctrl+R] Raw View  [Esc] Quit\n"
 
 	return s
 }
