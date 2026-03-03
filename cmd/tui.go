@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -346,6 +347,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.footerMsg = successStyle.Render(" [✅ Copied!]")
 				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 			}
+		case "ctrl+f":
+			// JSONモードで、かつBody入力欄にフォーカスがある時だけ実行
+			if m.format == "json" && m.focusIndex == 3 {
+				input := m.bodyInput.Value()
+				if input == "" {
+					return m, nil
+				}
+
+				var obj interface{}
+				// 1. 一旦パースして構造をチェック
+				err := json.Unmarshal([]byte(input), &obj)
+				if err != nil {
+					m.footerMsg = errorStyle.Render(" [❌ Invalid JSON]")
+					return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+				}
+
+				// 2. インデント付きで書き出し (Prettify)
+				prettyJSON, _ := json.MarshalIndent(obj, "", "  ")
+				m.bodyInput.SetValue(string(prettyJSON))
+				m.footerMsg = successStyle.Render(" [✨ Formatted!]")
+				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+			}
 		}
 
 	case responseMsg:
@@ -452,7 +475,7 @@ func (m model) View() string {
 		curlPreview = curlPreview[:m.terminalWidth-25] + "..."
 	}
 	content += curlPreviewStyle.Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n\n"
-	content += infoStyle.Render("[Ctrl+j/n] Focus↓  [Ctrl+k/p]　Focus↑  [Ctrl+s] Send  [Ctrl+r] Raw  [Ctrl+a] Copy") + m.footerMsg + "\n"
+	content += infoStyle.Render("[Ctrl+j/n] Focus↓  [Ctrl+k/p]　Focus↑  [Ctrl+f] Prettify  [Ctrl+s] Send  [Ctrl+r] Raw  [Ctrl+a] Copy") + m.footerMsg + "\n"
 
 	return appStyle.Render(content)
 }
