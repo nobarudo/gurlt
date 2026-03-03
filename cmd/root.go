@@ -1,4 +1,3 @@
-// cmd/root.go
 package cmd
 
 import (
@@ -8,8 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// コマンドラインから受け取るフラグ用変数
-var method string
+var (
+	method string
+	format string
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "gurlt [url]",
@@ -21,9 +22,8 @@ var rootCmd = &cobra.Command{
 			reqUrl = args[0]
 		}
 
-		// ▼ UIの初期化処理は tui.go 側にある initialModel を呼び出すだけ！
-		// 同じ cmd パッケージ内なので、import なしで直接呼び出せます。
-		p := tea.NewProgram(initialModel(reqUrl, method), tea.WithAltScreen())
+		// 3つの引数を渡して初期化
+		p := tea.NewProgram(initialModel(reqUrl, method, format), tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
 			return err
 		}
@@ -39,6 +39,6 @@ func Execute() {
 }
 
 func init() {
-	// コマンドライン引数 -X の定義
 	rootCmd.Flags().StringVarP(&method, "request", "X", "GET", "Specify request command to use")
+	rootCmd.Flags().StringVarP(&format, "format", "f", "form", "Data format (json, form)")
 }

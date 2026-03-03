@@ -15,10 +15,28 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ==========================================
-// Bubble Tea のモデル構成
+// Lip Gloss スタイル定義
+// ==========================================
+
+var (
+	appStyle          = lipgloss.NewStyle().Margin(1, 2).Padding(1, 2).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#569CD6"))
+	titleStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#4EC9B0")).Bold(true).MarginBottom(1)
+	focusedLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#CE9178")).Bold(true)
+	blurredLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#75715E"))
+	dividerStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#3E3D32")).Margin(1, 0)
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#F44747")).Bold(true)
+	successStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#B5CEA8")).Bold(true)
+	infoStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#DCDCAA"))
+	responseBoxStyle  = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("#808080")).Padding(0, 1)
+	curlPreviewStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#C586C0")).Italic(true)
+)
+
+// ==========================================
+// 型定義とモデル
 // ==========================================
 
 type responseMsg struct {
@@ -28,57 +46,65 @@ type responseMsg struct {
 	err        error
 }
 
-type model struct {
-	methodInput  textinput.Model
-	urlInput     textinput.Model
-	headerInput  textarea.Model
-	bodyInput    textarea.Model
-	responseView viewport.Model
-	focusIndex   int
-	ready        bool
+type clearMsg struct{}
 
+type model struct {
+	methodInput    textinput.Model
+	urlInput       textinput.Model
+	headerInput    textarea.Model
+	bodyInput      textarea.Model
+	responseView   viewport.Model
+	focusIndex     int
+	ready          bool
 	showRawView    bool
 	terminalWidth  int
 	terminalHeight int
 	normalContent  string
 	rawContent     string
-
-	footerMsg string
-	saveInput textinput.Model
-	isSaving  bool
-
+	footerMsg      string
+	saveInput      textinput.Model
+	isSaving       bool
 	responseStatus string
 	isLoading      bool
 	err            error
+	format         string
 }
 
-func initialModel(reqUrl, method string) model {
+func initialModel(reqUrl, method, format string) model {
 	m := textinput.New()
-	m.Placeholder = "GET, POST, PUT, DELETE..."
 	m.SetValue(method)
+	m.Prompt = ""
 
 	u := textinput.New()
 	u.Placeholder = "https://api.example.com"
 	u.SetValue(reqUrl)
 	u.Focus()
+	u.Prompt = ""
 
 	h := textarea.New()
-	h.Placeholder = "Key: Value\nAuthorization: Bearer token..."
-	h.ShowLineNumbers = false
-	h.SetHeight(4)
-	h.SetWidth(50)
+	h.Placeholder = "Key: Value..."
+	h.SetHeight(3)
+	h.SetWidth(60)
 
 	defaultHeaders := "User-Agent: gurlt/0.1.0\nAccept: */*"
 	if method == "POST" || method == "PUT" || method == "PATCH" {
-		defaultHeaders += "\nContent-Type: application/x-www-form-urlencoded"
+		if format == "json" {
+			defaultHeaders += "\nContent-Type: application/json"
+		} else {
+			defaultHeaders += "\nContent-Type: application/x-www-form-urlencoded"
+		}
 	}
 	h.SetValue(defaultHeaders)
 
 	b := textarea.New()
-	b.Placeholder = "name=taro\nage=20"
+	if format == "json" {
+		b.Placeholder = "{\n  \"key\": \"value\"\n}"
+	} else {
+		b.Placeholder = "key=value"
+	}
 	b.ShowLineNumbers = true
-	b.SetHeight(5)
-	b.SetWidth(50)
+	b.SetHeight(4)
+	b.SetWidth(60)
 
 	sInput := textinput.New()
 	sInput.Placeholder = "output.txt"
@@ -91,6 +117,7 @@ func initialModel(reqUrl, method string) model {
 		bodyInput:   b,
 		saveInput:   sInput,
 		focusIndex:  1,
+		format:      format,
 	}
 }
 
@@ -98,9 +125,12 @@ func (m model) Init() tea.Cmd {
 	return tea.Batch(textinput.Blink, textarea.Blink)
 }
 
-func buildCurlCmd(method, reqUrl, headers, body string) string {
-	cmd := fmt.Sprintf("curl -X %s '%s'", method, reqUrl)
+// ==========================================
+// ロジック (cURL & Request)
+// ==========================================
 
+func buildCurlCmd(method, reqUrl, headers, body, format string) string {
+	cmd := fmt.Sprintf("curl -X %s '%s'", method, reqUrl)
 	lines := strings.Split(headers, "\n")
 	for _, line := range lines {
 		parts := strings.SplitN(line, ":", 2)
@@ -108,50 +138,42 @@ func buildCurlCmd(method, reqUrl, headers, body string) string {
 			cmd += fmt.Sprintf(" -H '%s: %s'", strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
 		}
 	}
-
 	if body != "" {
-		form := url.Values{}
-		lines := strings.Split(body, "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) == 2 {
-				form.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-			} else {
-				form.Add(strings.TrimSpace(parts[0]), "")
-			}
-		}
-		if len(form) > 0 {
-			cmd += fmt.Sprintf(" -d '%s'", form.Encode())
-		}
-	}
-
-	return cmd
-}
-
-func sendRequest(method, reqUrl, headers, body string) tea.Cmd {
-	return func() tea.Msg {
-		var reqBody io.Reader
-
-		if body != "" {
+		if format == "json" {
+			singleLine := strings.ReplaceAll(body, "\n", "")
+			cmd += fmt.Sprintf(" -d '%s'", singleLine)
+		} else {
 			form := url.Values{}
-			lines := strings.Split(body, "\n")
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
-				if line == "" {
-					continue
-				}
+			for _, line := range strings.Split(body, "\n") {
 				parts := strings.SplitN(line, "=", 2)
 				if len(parts) == 2 {
 					form.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-				} else {
-					form.Add(strings.TrimSpace(parts[0]), "")
 				}
 			}
-			reqBody = strings.NewReader(form.Encode())
+			if len(form) > 0 {
+				cmd += fmt.Sprintf(" -d '%s'", form.Encode())
+			}
+		}
+	}
+	return cmd
+}
+
+func sendRequest(method, reqUrl, headers, body, format string) tea.Cmd {
+	return func() tea.Msg {
+		var reqBody io.Reader
+		if body != "" {
+			if format == "json" {
+				reqBody = strings.NewReader(body)
+			} else {
+				form := url.Values{}
+				for _, line := range strings.Split(body, "\n") {
+					parts := strings.SplitN(line, "=", 2)
+					if len(parts) == 2 {
+						form.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+					}
+				}
+				reqBody = strings.NewReader(form.Encode())
+			}
 		}
 
 		req, err := http.NewRequest(method, reqUrl, reqBody)
@@ -159,8 +181,7 @@ func sendRequest(method, reqUrl, headers, body string) tea.Cmd {
 			return responseMsg{err: err}
 		}
 
-		lines := strings.Split(headers, "\n")
-		for _, line := range lines {
+		for _, line := range strings.Split(headers, "\n") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 {
 				req.Header.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
@@ -168,7 +189,6 @@ func sendRequest(method, reqUrl, headers, body string) tea.Cmd {
 		}
 
 		reqBytes, _ := httputil.DumpRequestOut(req, true)
-
 		client := &http.Client{Timeout: 10 * time.Second}
 		res, err := client.Do(req)
 		if err != nil {
@@ -179,8 +199,8 @@ func sendRequest(method, reqUrl, headers, body string) tea.Cmd {
 		resBytes, _ := httputil.DumpResponse(res, true)
 		bodyBytes, _ := io.ReadAll(res.Body)
 
-		curlCmd := buildCurlCmd(method, reqUrl, headers, body)
-		rawStr := fmt.Sprintf("=== cURL ===\n%s\n\n=== Request ===\n%s\n%s\n\n=== Response ===\n%s", curlCmd, reqUrl, string(reqBytes), string(resBytes))
+		curlCmd := buildCurlCmd(method, reqUrl, headers, body, format)
+		rawStr := fmt.Sprintf("=== cURL ===\n%s\n\n=== Request ===\n%s\n%s\n=== Response ===\n%s", curlCmd, reqUrl, string(reqBytes), string(resBytes))
 
 		return responseMsg{
 			status:     res.Status,
@@ -190,36 +210,40 @@ func sendRequest(method, reqUrl, headers, body string) tea.Cmd {
 	}
 }
 
+// ==========================================
+// メインループ (Update & View)
+// ==========================================
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.terminalWidth = msg.Width
-		m.terminalHeight = msg.Height
+	case clearMsg:
+		m.footerMsg = ""
+		return m, nil
 
+	case tea.WindowSizeMsg:
+		m.terminalWidth, m.terminalHeight = msg.Width, msg.Height
+		contentWidth := m.terminalWidth - 8
 		if !m.ready {
-			m.responseView = viewport.New(msg.Width, 1)
+			m.responseView = viewport.New(contentWidth, 1)
 			m.normalContent = "Ready to send request.\nPress Ctrl+S to fetch."
-			m.rawContent = "No request sent yet."
 			m.responseView.SetContent(m.normalContent)
 			m.ready = true
 		}
-
+		m.responseView.Width = contentWidth
 		if m.showRawView {
-			m.responseView.Height = m.terminalHeight - 4
+			m.responseView.Height = m.terminalHeight - 12
 		} else {
-			h := m.terminalHeight - 26
+			h := m.terminalHeight - 31
 			if h < 0 {
 				h = 0
 			}
 			m.responseView.Height = h
 		}
-		m.responseView.Width = m.terminalWidth
 
 	case tea.KeyMsg:
-		// 文字が入力されたらフッターのメッセージを消す
 		if len(msg.String()) == 1 {
 			m.footerMsg = ""
 		}
@@ -233,12 +257,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				filename := strings.TrimSpace(m.saveInput.Value())
 				if filename != "" {
-					err := os.WriteFile(filename, []byte(m.rawContent), 0644)
-					if err != nil {
-						m.footerMsg = fmt.Sprintf(" [❌ Save failed: %v]", err)
-					} else {
-						m.footerMsg = fmt.Sprintf(" [✅ Saved to %s]", filename)
-					}
+					os.WriteFile(filename, []byte(m.rawContent), 0644)
+					m.footerMsg = successStyle.Render(" [✅ Saved!]")
+					m.isSaving = false
+					m.saveInput.Blur()
+					return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 				}
 				m.isSaving = false
 				m.saveInput.Blur()
@@ -253,49 +276,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "esc":
 			return m, tea.Quit
 
-		case "tab":
+		case "ctrl+j", "ctrl+n":
 			if !m.showRawView {
 				m.focusIndex++
 				if m.focusIndex > 4 {
 					m.focusIndex = 0
 				}
 			}
-		case "shift+tab":
+			return m, nil
+		case "ctrl+k", "ctrl+p":
 			if !m.showRawView {
 				m.focusIndex--
 				if m.focusIndex < 0 {
 					m.focusIndex = 4
 				}
 			}
+			return m, nil
 
 		case "c":
-			if m.showRawView && m.rawContent != "" && m.rawContent != "No request sent yet." {
-				err := clipboard.WriteAll(m.rawContent)
-				if err != nil {
-					m.footerMsg = " [❌ Copy failed (Requires xclip/xsel on Linux)]"
-				} else {
-					m.footerMsg = " [✅ Copied to clipboard!]"
-				}
+			if m.showRawView && m.rawContent != "" {
+				clipboard.WriteAll(m.rawContent)
+				m.footerMsg = successStyle.Render(" [✅ Copied!]")
+				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 			}
-
 		case "s":
-			if m.showRawView && m.rawContent != "" && m.rawContent != "No request sent yet." {
+			if m.showRawView {
 				m.isSaving = true
 				m.saveInput.Focus()
-				m.saveInput.SetValue("")
-				m.footerMsg = ""
 				return m, textinput.Blink
 			}
-
 		case "ctrl+r":
 			m.showRawView = !m.showRawView
 			m.footerMsg = ""
 			m.isSaving = false
 			if m.showRawView {
-				m.responseView.Height = m.terminalHeight - 4
+				m.responseView.Height = m.terminalHeight - 12
 				m.responseView.SetContent(m.rawContent)
 			} else {
-				h := m.terminalHeight - 26
+				h := m.terminalHeight - 31
 				if h < 0 {
 					h = 0
 				}
@@ -304,46 +322,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.responseView.GotoTop()
 			return m, nil
-
 		case "ctrl+s":
 			if !m.showRawView {
 				m.isLoading = true
-				m.err = nil
-				m.responseStatus = ""
 				m.footerMsg = ""
-				m.responseView.SetContent("⏳ Loading...")
-				return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value())
+				m.responseView.SetContent(infoStyle.Render("⏳ Loading..."))
+				return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
 			}
-
-		// Ctrl+A が押された時の処理
 		case "ctrl+a":
 			if !m.showRawView {
-				fullCurl := buildCurlCmd(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value())
-				err := clipboard.WriteAll(fullCurl)
-
-				if err != nil {
-					// Linux等でクリップボード操作が失敗した場合
-					m.footerMsg = " [❌ Copy failed. Please select the text above!]"
-				} else {
-					// 成功した場合
-					m.footerMsg = " [✅ Copied cURL!]"
-				}
-				return m, nil
+				fullCurl := buildCurlCmd(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
+				clipboard.WriteAll(fullCurl)
+				m.footerMsg = successStyle.Render(" [✅ Copied!]")
+				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 			}
 		}
 
 	case responseMsg:
 		m.isLoading = false
-		m.err = msg.err
 		m.responseStatus = msg.status
 		if msg.err == nil {
-			m.normalContent = msg.body
-			m.rawContent = msg.rawContent
+			m.normalContent, m.rawContent = msg.body, msg.rawContent
 		} else {
-			m.normalContent = fmt.Sprintf("Error: %v", msg.err)
-			m.rawContent = fmt.Sprintf("Error: %v", msg.err)
+			m.normalContent = errorStyle.Render(fmt.Sprintf("Error: %v", msg.err))
 		}
-
 		if m.showRawView {
 			m.responseView.SetContent(m.rawContent)
 		} else {
@@ -358,35 +360,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.urlInput.Blur()
 		m.headerInput.Blur()
 		m.bodyInput.Blur()
-
 		if m.focusIndex == 0 {
 			m.methodInput.Focus()
-		} else if m.focusIndex == 1 {
+		}
+		if m.focusIndex == 1 {
 			m.urlInput.Focus()
-		} else if m.focusIndex == 2 {
+		}
+		if m.focusIndex == 2 {
 			m.headerInput.Focus()
-		} else if m.focusIndex == 3 {
+		}
+		if m.focusIndex == 3 {
 			m.bodyInput.Focus()
 		}
-
 		m.methodInput, cmd = m.methodInput.Update(msg)
 		cmds = append(cmds, cmd)
-
 		m.urlInput, cmd = m.urlInput.Update(msg)
 		cmds = append(cmds, cmd)
-
 		m.headerInput, cmd = m.headerInput.Update(msg)
 		cmds = append(cmds, cmd)
-
 		m.bodyInput, cmd = m.bodyInput.Update(msg)
 		cmds = append(cmds, cmd)
 	}
-
 	if m.focusIndex == 4 || m.showRawView {
 		m.responseView, cmd = m.responseView.Update(msg)
 		cmds = append(cmds, cmd)
 	}
-
 	return m, tea.Batch(cmds...)
 }
 
@@ -394,80 +392,57 @@ func (m model) View() string {
 	if !m.ready {
 		return "\n  Initializing..."
 	}
+	var content string
 
 	if m.showRawView {
-		s := "[ Raw View (Use ↑/↓/PgUp/PgDn to scroll) ]\n"
-		s += "----------------------------------------\n"
-		s += m.responseView.View() + "\n"
-		s += "----------------------------------------\n"
-
+		content += titleStyle.Render("📡 gurlt - Raw View") + "\n\n"
+		content += responseBoxStyle.Render(m.responseView.View()) + "\n\n"
 		if m.isSaving {
-			s += m.saveInput.View() + "   [Enter] Confirm   [Esc] Cancel\n"
+			content += m.saveInput.View() + "   [Enter] Confirm   [Esc] Cancel"
 		} else {
-			s += "[c] Copy   [s] Save to File" + m.footerMsg + "   [Ctrl+R] Back to Form   [Esc] Quit\n"
+			content += infoStyle.Render("[s] Save to File") + m.footerMsg + "   [Ctrl+r] Back"
 		}
-		return s
+		return appStyle.Render(content)
 	}
 
-	s := "Welcome to gurlt!\nHow to use gurlt : gurlt -h\n\n"
+	content += titleStyle.Render("🚀 gurlt - TUI HTTP Client") + "\n\n"
+	renderLabel := func(label string, isFocused bool) string {
+		if isFocused {
+			return focusedLabelStyle.Render("▶ " + label)
+		}
+		return blurredLabelStyle.Render("  " + label)
+	}
+	content += renderLabel("Method:", m.focusIndex == 0) + " " + m.methodInput.View() + "\n"
+	content += renderLabel("URL:   ", m.focusIndex == 1) + " " + m.urlInput.View() + "\n\n"
+	content += renderLabel("Headers:", m.focusIndex == 2) + "\n" + m.headerInput.View() + "\n\n"
 
-	if m.focusIndex == 0 {
-		s += fmt.Sprintf("> Method: %s\n", m.methodInput.View())
+	bodyLabel := "Params (key=value):"
+	if m.format == "json" {
+		bodyLabel = "Body (JSON):"
+	}
+	content += renderLabel(bodyLabel, m.focusIndex == 3) + "\n" + m.bodyInput.View() + "\n"
+	content += dividerStyle.Render(strings.Repeat("─", m.terminalWidth-10)) + "\n"
+
+	if m.responseStatus != "" {
+		if strings.HasPrefix(m.responseStatus, "2") {
+			content += successStyle.Render(fmt.Sprintf("✅ Status: %s", m.responseStatus)) + "\n"
+		} else {
+			content += errorStyle.Render(fmt.Sprintf("⚠️ Status: %s", m.responseStatus)) + "\n"
+		}
 	} else {
-		s += fmt.Sprintf("  Method: %s\n", m.methodInput.View())
+		content += "\n"
 	}
 
-	if m.focusIndex == 1 {
-		s += fmt.Sprintf("> URL:    %s\n\n", m.urlInput.View())
-	} else {
-		s += fmt.Sprintf("  URL:    %s\n\n", m.urlInput.View())
+	content += renderLabel("Response Body:", m.focusIndex == 4) + "\n"
+	content += responseBoxStyle.Render(m.responseView.View()) + "\n"
+	content += dividerStyle.Render(strings.Repeat("─", m.terminalWidth-10)) + "\n"
+
+	curlPreview := buildCurlCmd(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
+	if len(curlPreview) > m.terminalWidth-20 {
+		curlPreview = curlPreview[:m.terminalWidth-25] + "..."
 	}
+	content += curlPreviewStyle.Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n\n"
+	content += infoStyle.Render("[Ctrl+j/n] Focus↓  [Ctrl+k/p]　Focus↑  [Ctrl+s] Send  [Ctrl+r] Raw  [Ctrl+a] Copy") + m.footerMsg + "\n"
 
-	if m.focusIndex == 2 {
-		s += "> Headers:\n"
-	} else {
-		s += "  Headers:\n"
-	}
-	s += m.headerInput.View() + "\n\n"
-
-	if m.focusIndex == 3 {
-		s += "> Params (key=value):\n"
-	} else {
-		s += "  Params (key=value):\n"
-	}
-	s += m.bodyInput.View() + "\n"
-
-	s += "----------------------------------------\n"
-
-	if m.err != nil {
-		s += fmt.Sprintf("❌ Error: %v\n", m.err)
-	} else if m.responseStatus != "" {
-		s += fmt.Sprintf("✅ Status: %s\n", m.responseStatus)
-	} else {
-		s += "\n"
-	}
-
-	s += "----------------------------------------\n"
-
-	if m.focusIndex == 4 {
-		s += "[ Response Body (Use ↑/↓/PgUp/PgDn to scroll) ]\n"
-	} else {
-		s += "[ Response Body ]\n"
-	}
-	s += m.responseView.View() + "\n"
-
-	s += "----------------------------------------\n"
-
-	curlPreview := buildCurlCmd(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value())
-	if m.terminalWidth > 15 && len(curlPreview) > m.terminalWidth-15 {
-		curlPreview = curlPreview[:m.terminalWidth-15] + "..."
-	}
-	s += fmt.Sprintf("💻 cURL: %s\n", curlPreview)
-
-	s += "----------------------------------------\n"
-
-	// ▼ 修正: 通常画面のフッターにも m.footerMsg を表示するように変更
-	s += "[Tab] Focus  [Ctrl+S] Send  [Ctrl+R] Raw  [Ctrl+A] Copy cURL" + m.footerMsg + "  [Esc] Quit\n"
-
-	return s
+	return appStyle.Render(content)
 }
