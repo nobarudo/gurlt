@@ -276,6 +276,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "esc":
 			return m, tea.Quit
 
+		case "tab":
+			if m.focusIndex == 2 {
+				m.headerInput.InsertString("  ")
+				return m, nil
+			}
+			if m.focusIndex == 3 {
+				m.bodyInput.InsertString("  ")
+				return m, nil
+			}
+
 		case "ctrl+j", "ctrl+n":
 			if !m.showRawView {
 				m.focusIndex++
