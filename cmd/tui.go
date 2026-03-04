@@ -145,17 +145,17 @@ func (m model) Init() tea.Cmd {
 // リクエスト非同期処理
 // ==========================================
 
-func sendRequest(method, reqUrl, headers, body, format string) tea.Cmd {
+func sendRequest(method, reqUrl, headers, body, format string, location bool) tea.Cmd {
 	return func() tea.Msg {
 		res := client.Send(method, reqUrl, headers, body, format, location)
-
 		if res.Err != nil {
 			return responseMsg{err: res.Err}
 		}
 
 		curlCmd := curl.Build(method, reqUrl, headers, body, format, location)
 
-		rawStr := fmt.Sprintf("=== cURL ===\n%s\n\n=== Request ===\n%s\n%s\n=== Response ===\n%s", curlCmd, reqUrl, res.ReqDump, res.ResDump)
+		// ▼ 変更：ReqDump, ResDump を個別に結合するのではなく、FullDump を使う
+		rawStr := fmt.Sprintf("=== cURL ===\n%s\n\n%s", curlCmd, res.FullDump)
 
 		return responseMsg{
 			status:     res.Status,
@@ -310,7 +310,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.isLoading = true
 				m.footerMsg = ""
 				m.responseView.SetContent(infoStyle.Render("⏳ Loading..."))
-				return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
+				// ▼ 修正: 一番最後に m.location を追加します
+				return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
 			}
 		case "ctrl+a":
 			if !m.showRawView {
