@@ -19,7 +19,7 @@ type Result struct {
 }
 
 // Send は実際にHTTPリクエストを送信し、結果とダンプデータを返します
-func Send(method, reqUrl, headers, body, format string) Result {
+func Send(method, reqUrl, headers, body, format string, location bool) Result {
 	var reqBody io.Reader
 	if body != "" {
 		if format == "json" {
@@ -51,6 +51,13 @@ func Send(method, reqUrl, headers, body, format string) Result {
 	reqBytes, _ := httputil.DumpRequestOut(req, true)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
+
+	if !location {
+		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+
 	res, err := httpClient.Do(req)
 	if err != nil {
 		return Result{Err: err}

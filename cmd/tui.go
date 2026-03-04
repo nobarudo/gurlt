@@ -68,9 +68,10 @@ type model struct {
 	isLoading      bool
 	err            error
 	format         string
+	location       bool // 追加: リダイレクト追従フラグ
 }
 
-func initialModel(reqUrl, method, format string) model {
+func initialModel(reqUrl, method, headerStr, body, format string, location bool) model {
 	m := textinput.New()
 	m.SetValue(method)
 	m.Prompt = ""
@@ -86,15 +87,25 @@ func initialModel(reqUrl, method, format string) model {
 	h.SetHeight(3)
 	h.SetWidth(60)
 
-	defaultHeaders := "User-Agent: gurlt/0.1.0\nAccept: */*"
+	// ▼ ヘッダーの初期値の組み立て（-A や -H で指定されたものを優先する賢い処理）
+	finalHeaders := "Accept: */*"
+	if !strings.Contains(strings.ToLower(headerStr), "user-agent") {
+		finalHeaders = "User-Agent: gurlt/0.1.0\n" + finalHeaders
+	}
 	if method == "POST" || method == "PUT" || method == "PATCH" {
-		if format == "json" {
-			defaultHeaders += "\nContent-Type: application/json"
-		} else {
-			defaultHeaders += "\nContent-Type: application/x-www-form-urlencoded"
+		if !strings.Contains(strings.ToLower(headerStr), "content-type") {
+			if format == "json" {
+				finalHeaders += "\nContent-Type: application/json"
+			} else {
+				finalHeaders += "\nContent-Type: application/x-www-form-urlencoded"
+			}
 		}
 	}
-	h.SetValue(defaultHeaders)
+	// root.go から渡された -H などのヘッダーを追記
+	if headerStr != "" {
+		finalHeaders += "\n" + headerStr
+	}
+	h.SetValue(strings.TrimSpace(finalHeaders))
 
 	b := textarea.New()
 	if format == "json" {
@@ -105,6 +116,10 @@ func initialModel(reqUrl, method, format string) model {
 	b.ShowLineNumbers = true
 	b.SetHeight(4)
 	b.SetWidth(60)
+	// ▼ -d で渡されたボディデータをセット
+	if body != "" {
+		b.SetValue(body)
+	}
 
 	sInput := textinput.New()
 	sInput.Placeholder = "output.txt"
@@ -118,6 +133,7 @@ func initialModel(reqUrl, method, format string) model {
 		saveInput:   sInput,
 		focusIndex:  1,
 		format:      format,
+		location:    location, // セット
 	}
 }
 
@@ -131,13 +147,13 @@ func (m model) Init() tea.Cmd {
 
 func sendRequest(method, reqUrl, headers, body, format string) tea.Cmd {
 	return func() tea.Msg {
-		res := client.Send(method, reqUrl, headers, body, format)
+		res := client.Send(method, reqUrl, headers, body, format, location)
+
 		if res.Err != nil {
 			return responseMsg{err: res.Err}
 		}
 
-		// internal/curl パッケージに処理を委譲
-		curlCmd := curl.Build(method, reqUrl, headers, body, format)
+		curlCmd := curl.Build(method, reqUrl, headers, body, format, location)
 
 		rawStr := fmt.Sprintf("=== cURL ===\n%s\n\n=== Request ===\n%s\n%s\n=== Response ===\n%s", curlCmd, reqUrl, res.ReqDump, res.ResDump)
 
@@ -298,7 +314,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+a":
 			if !m.showRawView {
-				fullCurl := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
+				fullCurl := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
 				clipboard.WriteAll(fullCurl)
 				m.footerMsg = successStyle.Render(" [✅ Copied!]")
 				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
@@ -404,7 +420,7 @@ func (m model) View() string {
 	content += responseBoxStyle.Render(m.responseView.View()) + "\n"
 	content += dividerStyle.Render(strings.Repeat("─", m.terminalWidth-10)) + "\n"
 
-	curlPreview := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
+	curlPreview := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
 	if len(curlPreview) > m.terminalWidth-20 {
 		curlPreview = curlPreview[:m.terminalWidth-25] + "..."
 	}
