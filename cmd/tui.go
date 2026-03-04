@@ -318,6 +318,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				clipboard.WriteAll(fullCurl)
 				m.footerMsg = successStyle.Render(" [✅ Copied!]")
 				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+			} else {
+				// ▼ 追加：Raw画面で押されたら、Rawデータ全体をコピーする！
+				clipboard.WriteAll(m.rawContent)
+				m.footerMsg = successStyle.Render(" [✅ Raw Copied!]")
+				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 			}
 		}
 
@@ -383,7 +388,7 @@ func (m model) View() string {
 		if m.isSaving {
 			content += m.saveInput.View() + "   [Enter] Confirm   [Esc] Cancel"
 		} else {
-			content += infoStyle.Render("[s] Save to File") + m.footerMsg + "   [Ctrl+R] Back"
+			content += infoStyle.Render("[c/ctrl+a] Copy Raw   [s] Save to File   [ctrl+r] Back") + m.footerMsg
 		}
 		return appStyle.Render(content)
 	}
