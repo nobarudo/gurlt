@@ -3,10 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -17,6 +13,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"gurlt/internal/client"
+	"gurlt/internal/curl"
 )
 
 // ==========================================
@@ -127,85 +126,24 @@ func (m model) Init() tea.Cmd {
 }
 
 // ==========================================
-// ロジック (cURL & Request)
+// リクエスト非同期処理
 // ==========================================
-
-func buildCurlCmd(method, reqUrl, headers, body, format string) string {
-	cmd := fmt.Sprintf("curl -X %s '%s'", method, reqUrl)
-	lines := strings.Split(headers, "\n")
-	for _, line := range lines {
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) == 2 {
-			cmd += fmt.Sprintf(" -H '%s: %s'", strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-		}
-	}
-	if body != "" {
-		if format == "json" {
-			singleLine := strings.ReplaceAll(body, "\n", "")
-			cmd += fmt.Sprintf(" -d '%s'", singleLine)
-		} else {
-			form := url.Values{}
-			for _, line := range strings.Split(body, "\n") {
-				parts := strings.SplitN(line, "=", 2)
-				if len(parts) == 2 {
-					form.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-				}
-			}
-			if len(form) > 0 {
-				cmd += fmt.Sprintf(" -d '%s'", form.Encode())
-			}
-		}
-	}
-	return cmd
-}
 
 func sendRequest(method, reqUrl, headers, body, format string) tea.Cmd {
 	return func() tea.Msg {
-		var reqBody io.Reader
-		if body != "" {
-			if format == "json" {
-				reqBody = strings.NewReader(body)
-			} else {
-				form := url.Values{}
-				for _, line := range strings.Split(body, "\n") {
-					parts := strings.SplitN(line, "=", 2)
-					if len(parts) == 2 {
-						form.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-					}
-				}
-				reqBody = strings.NewReader(form.Encode())
-			}
+		res := client.Send(method, reqUrl, headers, body, format)
+		if res.Err != nil {
+			return responseMsg{err: res.Err}
 		}
 
-		req, err := http.NewRequest(method, reqUrl, reqBody)
-		if err != nil {
-			return responseMsg{err: err}
-		}
+		// internal/curl パッケージに処理を委譲
+		curlCmd := curl.Build(method, reqUrl, headers, body, format)
 
-		for _, line := range strings.Split(headers, "\n") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				req.Header.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-			}
-		}
-
-		reqBytes, _ := httputil.DumpRequestOut(req, true)
-		client := &http.Client{Timeout: 10 * time.Second}
-		res, err := client.Do(req)
-		if err != nil {
-			return responseMsg{err: err}
-		}
-		defer res.Body.Close()
-
-		resBytes, _ := httputil.DumpResponse(res, true)
-		bodyBytes, _ := io.ReadAll(res.Body)
-
-		curlCmd := buildCurlCmd(method, reqUrl, headers, body, format)
-		rawStr := fmt.Sprintf("=== cURL ===\n%s\n\n=== Request ===\n%s\n%s\n=== Response ===\n%s", curlCmd, reqUrl, string(reqBytes), string(resBytes))
+		rawStr := fmt.Sprintf("=== cURL ===\n%s\n\n=== Request ===\n%s\n%s\n=== Response ===\n%s", curlCmd, reqUrl, res.ReqDump, res.ResDump)
 
 		return responseMsg{
 			status:     res.Status,
-			body:       string(bodyBytes),
+			body:       res.Body,
 			rawContent: rawStr,
 		}
 	}
@@ -316,6 +254,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.saveInput.Focus()
 				return m, textinput.Blink
 			}
+
+		case "ctrl+f":
+			if m.format == "json" && m.focusIndex == 3 {
+				input := m.bodyInput.Value()
+				if input == "" {
+					return m, nil
+				}
+				var obj interface{}
+				if err := json.Unmarshal([]byte(input), &obj); err != nil {
+					m.footerMsg = errorStyle.Render(" [❌ Invalid JSON]")
+					return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+				}
+				pretty, _ := json.MarshalIndent(obj, "", "  ")
+				m.bodyInput.SetValue(string(pretty))
+				m.footerMsg = successStyle.Render(" [✨ Formatted!]")
+				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+			}
+
 		case "ctrl+r":
 			m.showRawView = !m.showRawView
 			m.footerMsg = ""
@@ -342,31 +298,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+a":
 			if !m.showRawView {
-				fullCurl := buildCurlCmd(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
+				fullCurl := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
 				clipboard.WriteAll(fullCurl)
 				m.footerMsg = successStyle.Render(" [✅ Copied!]")
-				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
-			}
-		case "ctrl+f":
-			// JSONモードで、かつBody入力欄にフォーカスがある時だけ実行
-			if m.format == "json" && m.focusIndex == 3 {
-				input := m.bodyInput.Value()
-				if input == "" {
-					return m, nil
-				}
-
-				var obj interface{}
-				// 1. 一旦パースして構造をチェック
-				err := json.Unmarshal([]byte(input), &obj)
-				if err != nil {
-					m.footerMsg = errorStyle.Render(" [❌ Invalid JSON]")
-					return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
-				}
-
-				// 2. インデント付きで書き出し (Prettify)
-				prettyJSON, _ := json.MarshalIndent(obj, "", "  ")
-				m.bodyInput.SetValue(string(prettyJSON))
-				m.footerMsg = successStyle.Render(" [✨ Formatted!]")
 				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 			}
 		}
@@ -433,7 +367,7 @@ func (m model) View() string {
 		if m.isSaving {
 			content += m.saveInput.View() + "   [Enter] Confirm   [Esc] Cancel"
 		} else {
-			content += infoStyle.Render("[s] Save to File") + m.footerMsg + "   [Ctrl+r] Back"
+			content += infoStyle.Render("[s] Save to File") + m.footerMsg + "   [Ctrl+R] Back"
 		}
 		return appStyle.Render(content)
 	}
@@ -470,12 +404,13 @@ func (m model) View() string {
 	content += responseBoxStyle.Render(m.responseView.View()) + "\n"
 	content += dividerStyle.Render(strings.Repeat("─", m.terminalWidth-10)) + "\n"
 
-	curlPreview := buildCurlCmd(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
+	curlPreview := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format)
 	if len(curlPreview) > m.terminalWidth-20 {
 		curlPreview = curlPreview[:m.terminalWidth-25] + "..."
 	}
 	content += curlPreviewStyle.Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n\n"
-	content += infoStyle.Render("[Ctrl+j/n] Focus↓  [Ctrl+k/p]　Focus↑  [Ctrl+f] Prettify  [Ctrl+s] Send  [Ctrl+r] Raw  [Ctrl+a] Copy") + m.footerMsg + "\n"
+
+	content += infoStyle.Render("[ctrl+j/n] Focus↓  [ctrl+k/p] Focus↑  [ctrl+f] Prettify  [ctrl+s] Send  [ctrl+r] Raw  [ctrl+a] cURL Copy") + m.footerMsg + "\n"
 
 	return appStyle.Render(content)
 }
