@@ -14,11 +14,12 @@ import (
 var (
 	method    string
 	format    string
-	headers   []string // 複数指定されるので配列
+	headers   []string
 	data      string
 	user      string
 	userAgent string
-	location  bool // オン・オフのスイッチなのでbool
+	location  bool
+	logFile   string
 )
 
 var rootCmd = &cobra.Command{
@@ -93,7 +94,7 @@ var rootCmd = &cobra.Command{
 		headerStr := strings.Join(headerLines, "\n")
 
 		// tui.go の initialModel にパースした値を全部渡す
-		p := tea.NewProgram(initialModel(reqUrl, method, headerStr, data, format, location), tea.WithAltScreen())
+		p := tea.NewProgram(initialModel(reqUrl, method, headerStr, data, format, location, logFile), tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
 			return err
 		}
@@ -119,4 +120,5 @@ func init() {
 	rootCmd.Flags().StringVarP(&user, "user", "u", "", "Server user and password")
 	rootCmd.Flags().StringVarP(&userAgent, "user-agent", "A", "", "Send User-Agent <name> to server")
 	rootCmd.Flags().BoolVarP(&location, "location", "L", false, "Follow redirects")
+	rootCmd.Flags().StringVar(&logFile, "log", "", "Append raw request and response to a file (e.g., --log audit.log)")
 }

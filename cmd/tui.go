@@ -68,10 +68,11 @@ type model struct {
 	isLoading      bool
 	err            error
 	format         string
-	location       bool // 追加: リダイレクト追従フラグ
+	location       bool //　リダイレクト追従フラグ
+	logFile        string
 }
 
-func initialModel(reqUrl, method, headerStr, body, format string, location bool) model {
+func initialModel(reqUrl, method, headerStr, body, format string, location bool, logFile string) model {
 	m := textinput.New()
 	m.SetValue(method)
 	m.Prompt = ""
@@ -148,7 +149,8 @@ func initialModel(reqUrl, method, headerStr, body, format string, location bool)
 		saveInput:   sInput,
 		focusIndex:  1,
 		format:      format,
-		location:    location, // セット
+		location:    location,
+		logFile:     logFile,
 	}
 }
 
@@ -377,6 +379,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.responseStatus = msg.status
 		if msg.err == nil {
 			m.normalContent, m.rawContent = msg.body, msg.rawContent
+
+			// logFileが指定されていたら、通信完了と同時に自動でファイルに追記する
+			if m.logFile != "" {
+				f, err := os.OpenFile(m.logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err == nil {
+					defer f.Close()
+					timestamp := time.Now().Format("2006-01-02 15:04:05")
+					logEntry := fmt.Sprintf("========== [ %s ] ==========\n%s\n\n", timestamp, m.rawContent)
+					f.WriteString(logEntry)
+					m.footerMsg = successStyle.Render(fmt.Sprintf(" [📝 Logged to %s]", m.logFile))
+				}
+			}
+
 		} else {
 			m.normalContent = errorStyle.Render(fmt.Sprintf("Error: %v", msg.err))
 		}
@@ -389,36 +404,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if !m.showRawView {
-		m.methodInput.Blur()
-		m.urlInput.Blur()
-		m.headerInput.Blur()
-		m.bodyInput.Blur()
-		if m.focusIndex == 0 {
-			m.methodInput.Focus()
-		}
-		if m.focusIndex == 1 {
-			m.urlInput.Focus()
-		}
-		if m.focusIndex == 2 {
-			m.headerInput.Focus()
-		}
-		if m.focusIndex == 3 {
-			m.bodyInput.Focus()
-		}
-		m.methodInput, cmd = m.methodInput.Update(msg)
-		cmds = append(cmds, cmd)
-		m.urlInput, cmd = m.urlInput.Update(msg)
-		cmds = append(cmds, cmd)
-		m.headerInput, cmd = m.headerInput.Update(msg)
-		cmds = append(cmds, cmd)
-		m.bodyInput, cmd = m.bodyInput.Update(msg)
-		cmds = append(cmds, cmd)
-	}
-	if m.focusIndex == 4 || m.showRawView {
-		m.responseView, cmd = m.responseView.Update(msg)
-		cmds = append(cmds, cmd)
-	}
 	if !m.showRawView {
 		// ▼ 削除: ここにあった m.methodInput.Blur() 等の長い処理をごっそり消します！
 
