@@ -87,27 +87,42 @@ func initialModel(reqUrl, method, headerStr, body, format string, location bool)
 	h.SetHeight(3)
 	h.SetWidth(60)
 
-	// ▼ ヘッダーの初期値の組み立て（-A や -H で指定されたものを優先する賢い処理）
-	finalHeaders := "Accept: */*"
-	if !strings.Contains(strings.ToLower(headerStr), "user-agent") {
-		finalHeaders = "User-Agent: gurlt/0.1.0\n" + finalHeaders
+	// ▼ 修正: ヘッダーの初期値組み立てをスマートに（重複排除）
+	var finalHeaderLines []string
+	lowerHeaderStr := strings.ToLower(headerStr)
+
+	// ユーザーが User-Agent を指定していなければデフォルトを付ける
+	if !strings.Contains(lowerHeaderStr, "user-agent:") {
+		finalHeaderLines = append(finalHeaderLines, "User-Agent: gurlt/0.1.0")
 	}
+	// ユーザーが Accept を指定していなければデフォルトを付ける
+	if !strings.Contains(lowerHeaderStr, "accept:") {
+		finalHeaderLines = append(finalHeaderLines, "Accept: */*")
+	}
+
+	// メソッドがPOST等で、ユーザーが Content-Type を指定していなければ自動付与
 	if method == "POST" || method == "PUT" || method == "PATCH" {
-		if !strings.Contains(strings.ToLower(headerStr), "content-type") {
+		if !strings.Contains(lowerHeaderStr, "content-type:") {
 			if format == "json" {
-				finalHeaders += "\nContent-Type: application/json"
+				finalHeaderLines = append(finalHeaderLines, "Content-Type: application/json")
 			} else {
-				finalHeaders += "\nContent-Type: application/x-www-form-urlencoded"
+				finalHeaderLines = append(finalHeaderLines, "Content-Type: application/x-www-form-urlencoded")
 			}
 		}
 	}
-	// root.go から渡された -H などのヘッダーを追記
+
+	finalHeaders := strings.Join(finalHeaderLines, "\n")
 	if headerStr != "" {
-		finalHeaders += "\n" + headerStr
+		if finalHeaders != "" {
+			finalHeaders += "\n" + headerStr
+		} else {
+			finalHeaders = headerStr
+		}
 	}
 	h.SetValue(strings.TrimSpace(finalHeaders))
 
 	b := textarea.New()
+
 	if format == "json" {
 		b.Placeholder = "{\n  \"key\": \"value\"\n}"
 	} else {
@@ -135,6 +150,31 @@ func initialModel(reqUrl, method, headerStr, body, format string, location bool)
 		format:      format,
 		location:    location, // セット
 	}
+}
+
+// ▼ 各入力欄のフォーカス状態を正しく更新するヘルパー関数
+func updateFocus(m *model) tea.Cmd {
+	var cmds []tea.Cmd
+
+	// 一旦すべての入力欄のフォーカスを外す
+	m.methodInput.Blur()
+	m.urlInput.Blur()
+	m.headerInput.Blur()
+	m.bodyInput.Blur()
+
+	// 現在の focusIndex に応じて、該当する入力欄だけにフォーカスを当てる
+	switch m.focusIndex {
+	case 0:
+		cmds = append(cmds, m.methodInput.Focus())
+	case 1:
+		cmds = append(cmds, m.urlInput.Focus())
+	case 2:
+		cmds = append(cmds, m.headerInput.Focus())
+	case 3:
+		cmds = append(cmds, m.bodyInput.Focus())
+	}
+
+	return tea.Batch(cmds...)
 }
 
 func (m model) Init() tea.Cmd {
@@ -247,14 +287,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.focusIndex > 4 {
 					m.focusIndex = 0
 				}
+				// ▼ 修正: フォーカス状態を更新して、カーソルを点滅させるコマンドを返す
+				return m, updateFocus(&m)
 			}
 			return m, nil
+
 		case "ctrl+k", "ctrl+p":
 			if !m.showRawView {
 				m.focusIndex--
 				if m.focusIndex < 0 {
 					m.focusIndex = 4
 				}
+				// ▼ 修正: こっちも同様に更新する
+				return m, updateFocus(&m)
 			}
 			return m, nil
 
@@ -370,6 +415,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bodyInput, cmd = m.bodyInput.Update(msg)
 		cmds = append(cmds, cmd)
 	}
+	if m.focusIndex == 4 || m.showRawView {
+		m.responseView, cmd = m.responseView.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	if !m.showRawView {
+		// ▼ 削除: ここにあった m.methodInput.Blur() 等の長い処理をごっそり消します！
+
+		// ▼ 変更後: 各入力欄にただUpdateだけを渡す、最高にシンプルな形になります
+		m.methodInput, cmd = m.methodInput.Update(msg)
+		cmds = append(cmds, cmd)
+		m.urlInput, cmd = m.urlInput.Update(msg)
+		cmds = append(cmds, cmd)
+		m.headerInput, cmd = m.headerInput.Update(msg)
+		cmds = append(cmds, cmd)
+		m.bodyInput, cmd = m.bodyInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	if m.focusIndex == 4 || m.showRawView {
 		m.responseView, cmd = m.responseView.Update(msg)
 		cmds = append(cmds, cmd)
