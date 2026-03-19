@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"gurlt/internal/curl"
+	"gurlt/internal/tui"
 	"os"
 	"strings"
 
@@ -94,7 +95,7 @@ var rootCmd = &cobra.Command{
 		headerStr := strings.Join(headerLines, "\n")
 
 		// tui.go の initialModel にパースした値を全部渡す
-		p := tea.NewProgram(initialModel(reqUrl, method, headerStr, data, format, location, logFile), tea.WithAltScreen())
+		p := tea.NewProgram(tui.InitialModel(reqUrl, method, headerStr, data, format, location, logFile), tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
 			return err
 		}
