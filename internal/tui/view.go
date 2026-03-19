@@ -17,7 +17,7 @@ func (m Model) View() string {
 	}
 
 	if m.showRawView {
-		m.rawView()
+		return m.rawView()
 
 	}
 	return m.mainView()
