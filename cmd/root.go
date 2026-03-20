@@ -3,10 +3,12 @@ package cmd
 import (
 	"encoding/base64"
 	"fmt"
-	"gurlt/internal/curl"
-	"gurlt/internal/tui"
 	"os"
 	"strings"
+
+	"github.com/nobarudo/gurlt/internal/tui"
+
+	"github.com/nobarudo/gurlt/internal/curl"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"

@@ -3,7 +3,7 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 */
 package main
 
-import "gurlt/cmd"
+import "github.com/nobarudo/gurlt/cmd"
 
 func main() {
 	cmd.Execute()

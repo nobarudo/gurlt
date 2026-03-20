@@ -2,8 +2,9 @@ package tui
 
 import (
 	"fmt"
-	"gurlt/internal/client"
-	"gurlt/internal/curl"
+
+	"github.com/nobarudo/gurlt/internal/client"
+	"github.com/nobarudo/gurlt/internal/curl"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

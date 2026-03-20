@@ -4,10 +4,11 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
-	"gurlt/internal/curl"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/nobarudo/gurlt/internal/curl"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"

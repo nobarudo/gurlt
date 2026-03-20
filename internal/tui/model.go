@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"gurlt/internal/client"
+	"github.com/nobarudo/gurlt/internal/client"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"

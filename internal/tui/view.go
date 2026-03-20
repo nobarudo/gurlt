@@ -2,8 +2,9 @@ package tui
 
 import (
 	"fmt"
-	"gurlt/internal/curl"
 	"strings"
+
+	"github.com/nobarudo/gurlt/internal/curl"
 )
 
 func (m Model) View() string {

@@ -1,4 +1,4 @@
-module gurlt
+module github.com/nobarudo/gurlt
 
 go 1.25.0
 
