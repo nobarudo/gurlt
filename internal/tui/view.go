@@ -72,13 +72,16 @@ func (m Model) mainView() string {
 
 	content += dividerStyle.Render(strings.Repeat("─", m.terminalWidth-10)) + "\n"
 
-	curlPreview := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
-	if len(curlPreview) > m.terminalWidth-20 {
-		curlPreview = curlPreview[:m.terminalWidth-25] + "..."
+	contentWidth := m.terminalWidth - 10
+	if contentWidth < 1 {
+		contentWidth = 1
 	}
-	content += curlPreviewStyle.Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n"
 
-	content += infoStyle.Render("[ctrl+j/n] Focus↓  [ctrl+k/p] Focus↑  [ctrl+f] Prettify  [ctrl+s] Send  [ctrl+r] Raw  [ctrl+a] cURL Copy") + m.footerMsg + "\n"
+	curlPreview := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
+	content += curlPreviewStyle.Copy().Width(contentWidth).Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n\n"
+
+	helpText := "[ctrl+j/n] Focus↓  [ctrl+k/p] Focus↑  [ctrl+f] Prettify  [ctrl+s] Send  [ctrl+r] Raw  [ctrl+a] cURL Copy" + m.footerMsg
+	content += infoStyle.Copy().Width(contentWidth).Render(helpText) + "\n"
 
 	return appStyle.Render(content)
 }

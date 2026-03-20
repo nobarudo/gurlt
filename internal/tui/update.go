@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -33,7 +34,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.terminalWidth, m.terminalHeight = msg.Width, msg.Height
-	contentWidth := m.terminalWidth - 8
+	contentWidth := m.terminalWidth - 12
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
 	if !m.ready {
 		m.responseView = viewport.New(contentWidth, 1)
 		m.normalContent = "Ready to send request.\nPress Ctrl+S to fetch."
@@ -41,14 +45,12 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 		m.ready = true
 	}
 	m.responseView.Width = contentWidth
-	if m.showRawView {
-		m.responseView.Height = m.terminalHeight - 12
+	m.responseView.Height = m.terminalHeight - 12
+	if m.rawContent != "" {
+		wrappedRaw := lipgloss.NewStyle().Width(contentWidth).Render(m.rawContent)
+		m.responseView.SetContent(wrappedRaw)
 	} else {
-		h := m.terminalHeight - 31
-		if h < 0 {
-			h = 0
-		}
-		m.responseView.Height = h
+		m.responseView.SetContent(m.normalContent)
 	}
 	return m, nil
 }
@@ -80,7 +82,10 @@ func (m Model) handleResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 	} else {
 		m.responseView.SetContent(m.normalContent)
 	}
+	wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
+	m.responseView.SetContent(wrappedRaw)
 	m.responseView.GotoTop()
+
 	return m, nil
 }
 
@@ -179,15 +184,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.footerMsg = ""
 		m.isSaving = false
 		if m.showRawView {
-			m.responseView.Height = m.terminalHeight - 12
-			m.responseView.SetContent(m.rawContent)
-		} else {
-			h := m.terminalHeight - 31
-			if h < 0 {
-				h = 0
-			}
-			m.responseView.Height = h
-			m.responseView.SetContent(m.normalContent)
+			wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
+			m.responseView.SetContent(wrappedRaw)
 		}
 		m.responseView.GotoTop()
 		return m, nil
