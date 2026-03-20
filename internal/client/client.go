@@ -1,50 +1,62 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
-	"time"
 )
 
 // Result はHTTPリクエストの結果を格納する構造体です
 type Result struct {
 	Status   string
 	Body     string
-	FullDump string // ▼ 追加：すべての通信履歴をまとめた文字列
+	FullDump string
 	Err      error
+	History  []HistoryEntry
 }
 
-// ▼ 追加：すべての通信をフックしてダンプを記録するスパイ（Transport）
+type HistoryEntry struct {
+	Method string
+	URL    string
+	Status string
+}
+
 type dumpTransport struct {
 	Transport http.RoundTripper
 	ChainDump strings.Builder
+	History   []HistoryEntry
 }
 
 func (d *dumpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// 1. リクエストをダンプして記録
+
 	reqBytes, _ := httputil.DumpRequestOut(req, true)
 	d.ChainDump.WriteString(fmt.Sprintf("=== Request ===\n%s\n%s\n", req.URL.String(), string(reqBytes)))
 
-	// 2. 実際の通信を実行
 	res, err := d.Transport.RoundTrip(req)
 	if err != nil {
 		return res, err
 	}
 
-	// 3. レスポンスをダンプして記録
+	d.History = append(d.History, HistoryEntry{
+		Method: req.Method,
+		URL:    req.URL.String(),
+		Status: res.Status,
+	})
+
 	resBytes, _ := httputil.DumpResponse(res, true)
 	d.ChainDump.WriteString(fmt.Sprintf("=== Response ===\n%s\n", string(resBytes)))
 
 	return res, nil
 }
 
-// Send は実際にHTTPリクエストを送信します
 func Send(method, reqUrl, headers, body, format string, location bool) Result {
 	var reqBody io.Reader
+	var history []HistoryEntry
+
 	if body != "" {
 		if format == "json" {
 			reqBody = strings.NewReader(body)
@@ -72,20 +84,31 @@ func Send(method, reqUrl, headers, body, format string, location bool) Result {
 		}
 	}
 
-	// ▼ 変更：カスタムTransportをクライアントにセットする
 	dt := &dumpTransport{
 		Transport: http.DefaultTransport,
 	}
-	httpClient := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: dt, // ここでスパイを仕掛ける
-	}
 
-	if !location {
-		// リダイレクトを追従しない設定
-		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
+	httpClient := &http.Client{
+		Transport: dt,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if !location {
+				return http.ErrUseLastResponse
+			}
+
+			lastReq := via[len(via)-1]
+			if lastReq.Response != nil {
+				history = append(history, HistoryEntry{
+					Method: lastReq.Method,
+					URL:    lastReq.URL.String(),
+					Status: lastReq.Response.Status,
+				})
+			}
+
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return nil
+		},
 	}
 
 	res, err := httpClient.Do(req)
@@ -96,9 +119,16 @@ func Send(method, reqUrl, headers, body, format string, location bool) Result {
 
 	bodyBytes, _ := io.ReadAll(res.Body)
 
+	history = append(history, HistoryEntry{
+		Method: res.Request.Method,
+		URL:    res.Request.URL.String(),
+		Status: res.Status,
+	})
+
 	return Result{
 		Status:   res.Status,
 		Body:     string(bodyBytes),
-		FullDump: dt.ChainDump.String(), // 記録したすべての履歴を返す
+		FullDump: dt.ChainDump.String(),
+		History:  dt.History,
 	}
 }
