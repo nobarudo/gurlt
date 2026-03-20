@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"gurlt/internal/client"
+
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -23,6 +25,7 @@ type Model struct {
 	saveInput      textinput.Model
 	isSaving       bool
 	responseStatus string
+	history        []client.HistoryEntry
 	isLoading      bool
 	err            error
 	format         string

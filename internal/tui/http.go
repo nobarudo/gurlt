@@ -13,6 +13,7 @@ type responseMsg struct {
 	body       string
 	rawContent string
 	err        error
+	history    []client.HistoryEntry
 }
 
 type clearMsg struct{}
@@ -25,14 +26,13 @@ func sendRequest(method, reqUrl, headers, body, format string, location bool) te
 		}
 
 		curlCmd := curl.Build(method, reqUrl, headers, body, format, location)
-
-		// ▼ 変更：ReqDump, ResDump を個別に結合するのではなく、FullDump を使う
 		rawStr := fmt.Sprintf("=== cURL ===\n%s\n\n%s", curlCmd, res.FullDump)
 
 		return responseMsg{
 			status:     res.Status,
 			body:       res.Body,
 			rawContent: rawStr,
+			history:    res.History,
 		}
 	}
 }

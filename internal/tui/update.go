@@ -58,6 +58,7 @@ func (m Model) handleResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 	m.responseStatus = msg.status
 	if msg.err == nil {
 		m.normalContent, m.rawContent = msg.body, msg.rawContent
+		m.history = msg.history
 
 		// ログ保存
 		if m.logFile != "" {
@@ -130,7 +131,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+j", "ctrl+n":
 		if !m.showRawView {
 			m.focusIndex++
-			if m.focusIndex > 4 {
+			if m.focusIndex > 3 {
 				m.focusIndex = 0
 			}
 			return m, updateFocus(&m)
@@ -140,7 +141,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.showRawView {
 			m.focusIndex--
 			if m.focusIndex < 0 {
-				m.focusIndex = 4
+				m.focusIndex = 3
 			}
 			return m, updateFocus(&m)
 		}
@@ -229,7 +230,7 @@ func (m Model) updateInputs(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	if m.focusIndex == 4 || m.showRawView {
+	if m.showRawView {
 		m.responseView, cmd = m.responseView.Update(msg)
 		cmds = append(cmds, cmd)
 	}
