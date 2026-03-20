@@ -27,6 +27,9 @@ var rootCmd = &cobra.Command{
 	Use:   "gurlt [url]",
 	Short: "A TUI-based HTTP client",
 	Args:  cobra.MaximumNArgs(1),
+	FParseErrWhitelist: cobra.FParseErrWhitelist{
+		UnknownFlags: true,
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		reqUrl := ""
 		if len(args) > 0 {
@@ -118,6 +121,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&method, "request", "X", "GET", "Specify request command to use")
 	rootCmd.Flags().StringArrayVarP(&headers, "header", "H", []string{}, "Pass custom header(s) to server")
 	rootCmd.Flags().StringVarP(&data, "data", "d", "", "HTTP POST data")
+	rootCmd.Flags().StringVar(&data, "data-raw", "", "HTTP POST data (same as --data)")
 	rootCmd.Flags().StringVarP(&user, "user", "u", "", "Server user and password")
 	rootCmd.Flags().StringVarP(&userAgent, "user-agent", "A", "", "Send User-Agent <name> to server")
 	rootCmd.Flags().BoolVarP(&location, "location", "L", false, "Follow redirects")
