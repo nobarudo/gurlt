@@ -39,6 +39,38 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	if contentWidth < 1 {
 		contentWidth = 1
 	}
+	fixedVerticalLines := 15
+
+	// 入力欄に使える余りスペースを計算し、2つのテキストエリア（Headers/Params）で割る
+	availableHeight := m.terminalHeight - fixedVerticalLines
+	textAreaHeight := availableHeight / 2
+
+	// 最低5行は必ず確保する（ターミナルが極端に狭い場合）
+	if textAreaHeight < 5 {
+		textAreaHeight = 5
+	}
+
+	// 計算した高さをテキストエリアにセット
+	m.headerInput.SetHeight(textAreaHeight)
+	m.bodyInput.SetHeight(textAreaHeight)
+
+	rawFixedLines := 5
+	rawHeight := m.terminalHeight - rawFixedLines
+	if rawHeight < 1 {
+		rawHeight = 1
+	}
+
+	if !m.ready {
+		// 初回起動時
+		m.responseView = viewport.New(contentWidth, rawHeight)
+		m.normalContent = "Ready to send request.\nPress Ctrl+S to fetch."
+		m.ready = true
+	} else {
+		// 画面リサイズ時
+		m.responseView.Width = contentWidth
+		m.responseView.Height = rawHeight // ▼ ここで計算した高さをセット！
+	}
+
 	if !m.ready {
 		m.responseView = viewport.New(contentWidth, 1)
 		m.normalContent = "Ready to send request.\nPress Ctrl+S to fetch."

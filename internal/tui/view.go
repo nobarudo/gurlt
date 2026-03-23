@@ -23,11 +23,11 @@ func (m Model) rawView() string {
 	var content string
 
 	content += titleStyle.Render("📡 gurlt - Raw View") + "\n"
-	content += responseBoxStyle.Render(m.responseView.View()) + "\n"
+	content += responseBoxStyle.Render(m.responseView.View()) + "\n\n"
 	if m.isSaving {
 		content += m.saveInput.View() + "   [Enter] Confirm   [Esc] Cancel"
 	} else {
-		content += infoStyle.Render("[c/ctrl+a] Copy Raw   [s] Save to File   [ctrl+r] Back") + m.footerMsg
+		content += infoStyle.Render("[c/ctrl+a] Copy Raw   [s] Save to File   [ctrl+r] Back") + m.footerMsg + "\n"
 	}
 	return appStyle.Render(content)
 }
@@ -79,10 +79,10 @@ func (m Model) mainView() string {
 	}
 
 	curlPreview := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
-	content += curlPreviewStyle.Copy().Width(contentWidth).Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n\n"
+	content += curlPreviewStyle.Copy().Width(contentWidth).Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n"
 
 	helpText := "[ctrl+j/n] Focus↓  [ctrl+k/p] Focus↑  [ctrl+f] Prettify  [ctrl+s] Send  [ctrl+r] Raw  [ctrl+a] cURL Copy" + m.footerMsg
-	content += infoStyle.Copy().Width(contentWidth).Render(helpText) + "\n"
+	content += infoStyle.Copy().Width(contentWidth).Render(helpText)
 
 	return appStyle.Render(content)
 }

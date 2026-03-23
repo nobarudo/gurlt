@@ -21,7 +21,7 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 
 	h := textarea.New()
 	h.Placeholder = "Key: Value..."
-	h.SetHeight(4)
+	h.SetHeight(5)
 	h.SetWidth(60)
 
 	var finalHeaderLines []string
@@ -65,7 +65,7 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 		b.Placeholder = "key=value"
 	}
 	b.ShowLineNumbers = true
-	b.SetHeight(4)
+	b.SetHeight(5)
 	b.SetWidth(60)
 	if body != "" {
 		b.SetValue(body)
