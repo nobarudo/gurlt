@@ -27,10 +27,6 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 	var finalHeaderLines []string
 	lowerHeaderStr := strings.ToLower(headerStr)
 
-	// ユーザーが User-Agent を指定していなければデフォルトを付ける
-	if !strings.Contains(lowerHeaderStr, "user-agent:") {
-		finalHeaderLines = append(finalHeaderLines, "User-Agent: gurlt/0.1.0")
-	}
 	// ユーザーが Accept を指定していなければデフォルトを付ける
 	if !strings.Contains(lowerHeaderStr, "accept:") {
 		finalHeaderLines = append(finalHeaderLines, "Accept: */*")
