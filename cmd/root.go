@@ -1,14 +1,11 @@
 package cmd
 
 import (
-	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/nobarudo/gurlt/internal/tui"
-
-	"github.com/nobarudo/gurlt/internal/curl"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -33,74 +30,18 @@ var rootCmd = &cobra.Command{
 		UnknownFlags: true,
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		reqUrl := ""
+		urlInput := ""
 		if len(args) > 0 {
-			reqUrl = args[0]
+			urlInput = args[0]
 		}
 
-		// ▼ マジックパーサーの介入！
-		// 引数が "curl " から始まっていたら、文字列をパースして変数を上書きする
-		if strings.HasPrefix(strings.TrimSpace(reqUrl), "curl ") {
-			parsedOpts, err := curl.Parse(reqUrl)
-			if err == nil {
-				reqUrl = parsedOpts.URL
-				if parsedOpts.Method != "" {
-					method = parsedOpts.Method
-				}
-				if parsedOpts.Body != "" {
-					data = parsedOpts.Body
-				}
-				if parsedOpts.User != "" {
-					user = parsedOpts.User
-				}
-				if parsedOpts.UserAgent != "" {
-					userAgent = parsedOpts.UserAgent
-				}
-				if parsedOpts.Location {
-					location = parsedOpts.Location
-				}
-				// 抽出したヘッダーを配列に追加
-				headers = append(headers, parsedOpts.Headers...)
-			}
-		}
+		headerList := strings.Join(headers, "\n")
 
-		// 1. -d (data) が指定されていて、かつ -X がデフォルト(GET)ならPOSTにする
-		if data != "" && method == "GET" {
-			method = "POST"
-		}
+		extraArgs := getExtraArgs(os.Args[1:])
 
-		// ▼ 追加: ボディがJSONの形をしていたら、自動的に format を "json" に切り替える！
-		if data != "" && format == "form" {
-			trimmed := strings.TrimSpace(data)
-			if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
-				(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
-				format = "json"
-			}
-		}
+		m := tui.InitialModel(urlInput, method, headerList, data, format, location, logFile, extraArgs)
 
-		// 2. ヘッダーの組み立て
-		var headerLines []string
-
-		// -A (User-Agent) の処理
-		if userAgent != "" {
-			headerLines = append(headerLines, fmt.Sprintf("User-Agent: %s", userAgent))
-		}
-
-		// -u (Basic Auth) の処理
-		if user != "" {
-			encoded := base64.StdEncoding.EncodeToString([]byte(user))
-			headerLines = append(headerLines, fmt.Sprintf("Authorization: Basic %s", encoded))
-		}
-
-		// -H (カスタムヘッダー) の処理
-		for _, h := range headers {
-			headerLines = append(headerLines, h)
-		}
-
-		headerStr := strings.Join(headerLines, "\n")
-
-		// tui.go の initialModel にパースした値を全部渡す
-		p := tea.NewProgram(tui.InitialModel(reqUrl, method, headerStr, data, format, location, logFile), tea.WithAltScreen())
+		p := tea.NewProgram(m, tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
 			return err
 		}
@@ -113,6 +54,51 @@ func Execute() {
 	if err != nil {
 		os.Exit(1)
 	}
+}
+
+func getExtraArgs(args []string) string {
+	var extras []string
+
+	// gurltが既に知っているフラグ
+	knownValueFlags := map[string]bool{
+		"-X": true, "--request": true,
+		"-H": true, "--header": true,
+		"-d": true, "--data": true, "--data-raw": true,
+	}
+	knownBoolFlags := map[string]bool{
+		"-L": true, "--location": true,
+	}
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		// 知っているフラグ（値をとるもの）なら、フラグと次の値をスキップ
+		if knownValueFlags[arg] {
+			i++
+			continue
+		}
+		// 知っているフラグ（真偽値）なら、フラグだけスキップ
+		if knownBoolFlags[arg] {
+			continue
+		}
+
+		// '-' から始まる知らないフラグを見つけた場合
+		if strings.HasPrefix(arg, "-") {
+			extras = append(extras, arg)
+			// 次の引数が '-' から始まらず、URL（http）でもない場合、それはこのフラグの値とみなす
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") && !strings.HasPrefix(args[i+1], "http") {
+				val := args[i+1]
+				// 値にスペースが含まれていたらクォーテーションで囲む
+				if strings.Contains(val, " ") {
+					extras = append(extras, fmt.Sprintf("'%s'", val))
+				} else {
+					extras = append(extras, val)
+				}
+				i++
+			}
+		}
+	}
+	return strings.Join(extras, " ")
 }
 
 func init() {

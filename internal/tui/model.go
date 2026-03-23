@@ -31,4 +31,5 @@ type Model struct {
 	format         string
 	location       bool //　リダイレクト追従フラグ
 	logFile        string
+	extraArgs      string
 }

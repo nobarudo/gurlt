@@ -79,6 +79,9 @@ func (m Model) mainView() string {
 	}
 
 	curlPreview := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
+	if m.extraArgs != "" {
+		curlPreview += " " + m.extraArgs
+	}
 	content += curlPreviewStyle.Copy().Width(contentWidth).Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n"
 
 	helpText := "[ctrl+j/n] Focus↓  [ctrl+k/p] Focus↑  [ctrl+f] Prettify  [ctrl+s] Send  [ctrl+r] Raw  [ctrl+a] cURL Copy" + m.footerMsg

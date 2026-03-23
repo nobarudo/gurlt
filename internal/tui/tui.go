@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func InitialModel(reqUrl, method, headerStr, body, format string, location bool, logFile string) Model {
+func InitialModel(reqUrl, method, headerStr, body, format string, location bool, logFile string, extraArgs string) Model {
 	m := textinput.New()
 	m.SetValue(method)
 	m.Prompt = ""
@@ -85,6 +85,7 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 		format:      format,
 		location:    location,
 		logFile:     logFile,
+		extraArgs:   extraArgs,
 	}
 }
 

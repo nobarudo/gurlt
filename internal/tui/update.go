@@ -232,6 +232,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+a":
 		if !m.showRawView {
 			fullCurl := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
+			if m.extraArgs != "" {
+				fullCurl += " " + m.extraArgs
+			}
 			clipboard.WriteAll(fullCurl)
 			m.footerMsg = successStyle.Render(" [✅ Copied!]")
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
