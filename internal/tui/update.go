@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -202,8 +203,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if input == "" {
 				return m, nil
 			}
-			var obj interface{}
-			if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			var obj bytes.Buffer
+			if err := json.Indent(&obj, []byte(input), "", "  "); err != nil {
 				m.footerMsg = errorStyle.Render(" [❌ Invalid JSON]")
 				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 			}
