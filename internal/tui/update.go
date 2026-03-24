@@ -244,6 +244,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.footerMsg = successStyle.Render(" [✅ Raw Copied!]")
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 		}
+	case "ctrl+l":
+		m.location = !m.location
+		return m, nil
 	}
 
 	// 3. どのショートカットにも該当しない場合は、入力欄の文字入力として処理

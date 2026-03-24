@@ -82,9 +82,14 @@ func (m Model) mainView() string {
 	if m.extraArgs != "" {
 		curlPreview += " " + m.extraArgs
 	}
+
+	locStatus := "OFF"
+	if m.location {
+		locStatus = "ON"
+	}
 	content += curlPreviewStyle.Copy().Width(contentWidth).Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n"
 
-	helpText := "[ctrl+j/n] Focus↓  [ctrl+k/p] Focus↑  [ctrl+f] Prettify  [ctrl+s] Send  [ctrl+r] Raw  [ctrl+a] cURL Copy" + m.footerMsg
+	helpText := "[ctrl+j/n] Focus↓  [ctrl+k/p] Focus↑  [ctrl+f] Prettify  [ctrl+s] Send  [ctrl+r] Raw  [ctrl+l] location " + locStatus + " [ctrl+a] cURL Copy" + m.footerMsg
 	content += infoStyle.Copy().Width(contentWidth).Render(helpText)
 
 	return appStyle.Render(content)
