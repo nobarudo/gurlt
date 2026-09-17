@@ -7,10 +7,19 @@ import (
 )
 
 // Build は入力された値からcURLコマンドの文字列を生成します
-func Build(method, reqUrl, headers, body, format string, location bool) string {
+func Build(method, reqUrl, headers, body, format string, location, insecure, verbose bool, proxy string) string {
 	cmd := fmt.Sprintf("curl -X %s '%s'", method, reqUrl)
 	if location {
 		cmd += " -L"
+	}
+	if insecure {
+		cmd += " -k"
+	}
+	if verbose {
+		cmd += " -v"
+	}
+	if proxy != "" {
+		cmd += fmt.Sprintf(" -x '%s'", proxy)
 	}
 	lines := strings.Split(headers, "\n")
 	for _, line := range lines {

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/nobarudo/gurlt/internal/curl"
 )
 
 func (m Model) View() string {
@@ -83,10 +82,7 @@ func (m Model) mainView() string {
 		contentWidth = 1
 	}
 
-	curlPreview := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
-	if m.extraArgs != "" {
-		curlPreview += " " + m.extraArgs
-	}
+	curlPreview := m.BuildCurlCmd()
 
 	locStatus := "OFF"
 	if m.location {
@@ -136,6 +132,11 @@ func (m Model) optionsModalView() string {
 	}
 	proxyLabel := proxyCursor + "Proxy (-x):"
 	if m.optionsCursor == 3 {
+		if m.proxyInput.Focused() {
+			proxyLabel += " (Editing... [Enter/Esc] Done)"
+		} else {
+			proxyLabel += " (Press Space to edit)"
+		}
 		b.WriteString(modalSelectStyle.Render(proxyLabel) + "\n")
 	} else {
 		b.WriteString(modalItemStyle.Render(proxyLabel) + "\n")
@@ -168,7 +169,11 @@ func (m Model) optionsModalView() string {
 	b.WriteString("\n")
 
 	// Help text
-	b.WriteString(modalHelpStyle.Render("[j/k] Move   [Space/Enter] Toggle   [Esc/ctrl+o] Back"))
+	if m.proxyInput.Focused() {
+		b.WriteString(modalHelpStyle.Render("[Type] Input URL   [Enter/Esc] Done Editing"))
+	} else {
+		b.WriteString(modalHelpStyle.Render("[j/k] Move   [Space] Toggle / Edit   [Esc/ctrl+o] Back"))
+	}
 
 	modal := modalBoxStyle.Render(b.String())
 

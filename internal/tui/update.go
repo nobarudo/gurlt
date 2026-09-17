@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nobarudo/gurlt/internal/curl"
-
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -238,14 +236,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.isLoading = true
 			m.footerMsg = ""
 			m.responseView.SetContent(infoStyle.Render("⏳ Loading..."))
-			return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
+			return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location, m.BuildCurlCmd())
 		}
 	case "ctrl+a":
 		if !m.showRawView {
-			fullCurl := curl.Build(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location)
-			if m.extraArgs != "" {
-				fullCurl += " " + m.extraArgs
-			}
+			fullCurl := m.BuildCurlCmd()
 			clipboard.WriteAll(fullCurl)
 			m.footerMsg = successStyle.Render(" [✅ Copied!]")
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
@@ -287,30 +282,15 @@ func (m Model) updateInputs(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "ctrl+o":
-		m.showOptionsModal = false
-		m.proxyInput.Blur()
-		return m, nil
-	case "ctrl+c":
-		return m, tea.Quit
-	}
-
-	// Proxy入力欄（Cursor == 3）選択中のキー操作
-	if m.optionsCursor == 3 {
+	// 1. Proxy入力欄を編集中（Focused）の場合の処理
+	if m.proxyInput.Focused() {
 		switch msg.String() {
-		case "up", "shift+tab":
-			m.optionsCursor = 2
+		case "esc", "enter":
+			// 編集モードを終了して選択状態に戻る（モーダル自体は閉じない）
 			m.proxyInput.Blur()
 			return m, nil
-		case "down", "tab":
-			m.optionsCursor = 0
-			m.proxyInput.Blur()
-			return m, nil
-		case "enter":
-			m.optionsCursor = 0
-			m.proxyInput.Blur()
-			return m, nil
+		case "ctrl+c":
+			return m, tea.Quit
 		default:
 			var cmd tea.Cmd
 			m.proxyInput, cmd = m.proxyInput.Update(msg)
@@ -318,28 +298,24 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// チェックボックス項目（Cursor == 0, 1, 2）選択中のキー操作
+	// 2. モーダル内の項目選択モードの処理
 	switch msg.String() {
+	case "esc", "ctrl+o":
+		m.showOptionsModal = false
+		m.proxyInput.Blur()
+		return m, nil
+	case "ctrl+c":
+		return m, tea.Quit
 	case "j", "down", "tab":
 		m.optionsCursor++
 		if m.optionsCursor > 3 {
 			m.optionsCursor = 0
-		}
-		if m.optionsCursor == 3 {
-			m.proxyInput.Focus()
-		} else {
-			m.proxyInput.Blur()
 		}
 		return m, nil
 	case "k", "up", "shift+tab":
 		m.optionsCursor--
 		if m.optionsCursor < 0 {
 			m.optionsCursor = 3
-		}
-		if m.optionsCursor == 3 {
-			m.proxyInput.Focus()
-		} else {
-			m.proxyInput.Blur()
 		}
 		return m, nil
 	case " ", "enter":
@@ -350,6 +326,10 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.verbose = !m.verbose
 		case 2:
 			m.location = !m.location
+		case 3:
+			// Proxy欄でSpaceまたはEnterを押すとURL入力受付状態に切り替え
+			cmd := m.proxyInput.Focus()
+			return m, cmd
 		}
 		return m, nil
 	}

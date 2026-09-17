@@ -15,6 +15,9 @@ type ParsedOptions struct {
 	User      string
 	UserAgent string
 	Location  bool
+	Insecure  bool
+	Verbose   bool
+	Proxy     string
 }
 
 // Parse はcURLコマンドの文字列を安全に分解し、必要な設定だけを抽出します
@@ -64,6 +67,15 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 			}
 		case "-L", "--location":
 			opts.Location = true
+		case "-k", "--insecure":
+			opts.Insecure = true
+		case "-v", "--verbose":
+			opts.Verbose = true
+		case "-x", "--proxy":
+			if i+1 < len(args) {
+				opts.Proxy = args[i+1]
+				i++
+			}
 		default:
 			// オプションではなく、httpから始まるならURLとして扱う
 			if !strings.HasPrefix(arg, "-") && strings.HasPrefix(arg, "http") {

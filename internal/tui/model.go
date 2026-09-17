@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/nobarudo/gurlt/internal/client"
+	"github.com/nobarudo/gurlt/internal/curl"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -37,4 +40,24 @@ type Model struct {
 	verbose          bool
 	proxyInput       textinput.Model
 	optionsCursor    int
+}
+
+// BuildCurlCmd は現在の設定値（URL, Header, Body, 各種オプション）から完全なcURLコマンド文字列を生成します
+func (m Model) BuildCurlCmd() string {
+	proxy := strings.TrimSpace(m.proxyInput.Value())
+	cmd := curl.Build(
+		m.methodInput.Value(),
+		m.urlInput.Value(),
+		m.headerInput.Value(),
+		m.bodyInput.Value(),
+		m.format,
+		m.location,
+		m.insecure,
+		m.verbose,
+		proxy,
+	)
+	if m.extraArgs != "" {
+		cmd += " " + m.extraArgs
+	}
+	return cmd
 }
