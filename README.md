@@ -43,21 +43,51 @@ Automatically save request and response dumps to a file.
 
 ```bash
 gurlt --log audit.log https://example.com
-
 ```
+
+**5. Options Modal (`Ctrl+O`)**
+
+Press `Ctrl+O` from the main view to open the options modal and configure advanced cURL settings:
+- `-k / --insecure`: Ignore SSL certificate verification errors
+- `-v / --verbose`: Detailed logging
+- `-L / --location`: Follow HTTP redirects
+- `-x`: Specify HTTP/HTTPS proxy URL
+- View current configuration (`--format`, `--log`, and extra CLI arguments)
+
+Changes made in the modal are immediately reflected in the live `💻 cURL:` preview and copied with `Ctrl+A`.
 
 ## ⌨️ Keybindings
 
+### Main View
+
 | Key | Action |
 | --- | --- |
-| `Ctrl+J` / `Ctrl+K` | Move focus (Down / Up) |
+| `Ctrl+J` / `Ctrl+N` | Move focus down |
+| `Ctrl+K` / `Ctrl+P` | Move focus up |
 | `Ctrl+S` | Send request |
 | `Ctrl+R` | Toggle Raw View |
 | `Ctrl+F` | Prettify JSON body |
-| `Ctrl+A` | Copy cURL command (or Raw Dump in Raw View) |
-| `C` | Copy Raw Dump (in Raw View) |
-| `S` | Save Raw Dump to file (in Raw View) |
+| `Ctrl+L` | Toggle redirect follow (`-L / --location`) |
+| `Ctrl+O` | Open Options Modal |
+| `Ctrl+A` | Copy cURL command |
 | `Esc` / `Ctrl+C` | Quit |
+
+### Options Modal (`Ctrl+O`)
+
+| Key | Action |
+| --- | --- |
+| `j` / `k` (or `↓` / `↑`, `Tab`) | Move item |
+| `Space` | Toggle checkbox / Edit Proxy URL |
+| `Enter` / `Esc` | Finish editing Proxy URL |
+| `Esc` / `Ctrl+O` | Close Options Modal |
+
+### Raw View (`Ctrl+R`)
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+A` / `C` | Copy Raw Dump |
+| `S` | Save Raw Dump to file |
+| `Ctrl+R` | Back to Main View |
 
 ## 📄 License
 
