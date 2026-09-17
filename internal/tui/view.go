@@ -4,12 +4,17 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/nobarudo/gurlt/internal/curl"
 )
 
 func (m Model) View() string {
 	if !m.ready {
 		return "\n  Initializing..."
+	}
+
+	if m.showOptionsModal {
+		return m.optionsModalView()
 	}
 
 	if m.showRawView {
@@ -89,8 +94,93 @@ func (m Model) mainView() string {
 	}
 	content += curlPreviewStyle.Copy().Width(contentWidth).Render(fmt.Sprintf("💻 cURL: %s", curlPreview)) + "\n"
 
-	helpText := "[ctrl+j/n] Focus↓  [ctrl+k/p] Focus↑  [ctrl+f] Prettify  [ctrl+s] Send  [ctrl+r] Raw  [ctrl+l] location " + locStatus + " [ctrl+a] cURL Copy" + m.footerMsg
+	helpText := "[ctrl+j/n] Focus↓  [ctrl+k/p] Focus↑  [ctrl+f] Prettify  [ctrl+s] Send  [ctrl+r] Raw  [ctrl+l] location " + locStatus + "  [ctrl+o] Options  [ctrl+a] cURL Copy" + m.footerMsg
 	content += infoStyle.Copy().Width(contentWidth).Render(helpText)
 
 	return appStyle.Render(content)
 }
+
+func (m Model) optionsModalView() string {
+	var b strings.Builder
+	b.WriteString(modalTitleStyle.Render("⚙️  Options & Settings") + "\n\n")
+
+	renderItem := func(index int, label string, isChecked bool) string {
+		cursor := "  "
+		if m.optionsCursor == index {
+			cursor = "▶ "
+		}
+		check := "[ ]"
+		if isChecked {
+			check = "[x]"
+		}
+		line := fmt.Sprintf("%s%s %s", cursor, check, label)
+		if m.optionsCursor == index {
+			return modalSelectStyle.Render(line)
+		}
+		return modalItemStyle.Render(line)
+	}
+
+	// 1. -k / --insecure
+	b.WriteString(renderItem(0, "-k, --insecure (Ignore SSL certificate errors)", m.insecure) + "\n")
+
+	// 2. -v / --verbose
+	b.WriteString(renderItem(1, "-v, --verbose  (Detailed log)", m.verbose) + "\n")
+
+	// 3. -L / --location
+	b.WriteString(renderItem(2, "-L, --location (Follow redirects)", m.location) + "\n\n")
+
+	// 4. -x Proxy
+	proxyCursor := "  "
+	if m.optionsCursor == 3 {
+		proxyCursor = "▶ "
+	}
+	proxyLabel := proxyCursor + "Proxy (-x):"
+	if m.optionsCursor == 3 {
+		b.WriteString(modalSelectStyle.Render(proxyLabel) + "\n")
+	} else {
+		b.WriteString(modalItemStyle.Render(proxyLabel) + "\n")
+	}
+	b.WriteString(m.proxyInput.View() + "\n\n")
+
+	// Divider
+	b.WriteString(dividerStyle.Render(strings.Repeat("─", 54)) + "\n")
+
+	// Read-only info for current flags / environment
+	formatVal := m.format
+	if formatVal == "" {
+		formatVal = "form"
+	}
+	logVal := m.logFile
+	if logVal == "" {
+		logVal = "(none)"
+	}
+	extraVal := m.extraArgs
+	if extraVal == "" {
+		extraVal = "(none)"
+	}
+
+	b.WriteString(modalSectionTitleStyle.Render("Current Configuration:") + "\n")
+	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Data Format (-f): %s", formatVal)) + "\n")
+	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Log File (--log): %s", logVal)) + "\n")
+	if extraVal != "(none)" {
+		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Extra cURL Args:  %s", extraVal)) + "\n")
+	}
+	b.WriteString("\n")
+
+	// Help text
+	b.WriteString(modalHelpStyle.Render("[j/k] Move   [Space/Enter] Toggle   [Esc/ctrl+o] Back"))
+
+	modal := modalBoxStyle.Render(b.String())
+
+	width := m.terminalWidth
+	if width < 1 {
+		width = 80
+	}
+	height := m.terminalHeight
+	if height < 1 {
+		height = 24
+	}
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}
+

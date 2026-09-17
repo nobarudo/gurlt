@@ -30,6 +30,11 @@ type Model struct {
 	err            error
 	format         string
 	location       bool //　リダイレクト追従フラグ
-	logFile        string
-	extraArgs      string
+	logFile          string
+	extraArgs        string
+	showOptionsModal bool
+	insecure         bool
+	verbose          bool
+	proxyInput       textinput.Model
+	optionsCursor    int
 }

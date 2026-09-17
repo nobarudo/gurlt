@@ -71,12 +71,18 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 	sInput.Placeholder = "output.txt"
 	sInput.Prompt = "Save to: "
 
+	pInput := textinput.New()
+	pInput.Placeholder = "http://proxy.example.com:8080"
+	pInput.Prompt = "  URL: "
+	pInput.CharLimit = 128
+
 	return Model{
 		methodInput: m,
 		urlInput:    u,
 		headerInput: h,
 		bodyInput:   b,
 		saveInput:   sInput,
+		proxyInput:  pInput,
 		focusIndex:  1,
 		format:      format,
 		location:    location,

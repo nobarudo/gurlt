@@ -154,10 +154,20 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 2. グローバルショートカットの処理
+	// 2. オプション設定モーダル中のキーボード操作
+	if m.showOptionsModal {
+		return m.handleOptionsModalKeyMsg(msg)
+	}
+
+	// 3. グローバルショートカットの処理
 	switch msg.String() {
 	case "ctrl+c", "esc":
 		return m, tea.Quit
+	case "ctrl+o":
+		m.showOptionsModal = true
+		m.optionsCursor = 0
+		m.proxyInput.Blur()
+		return m, nil
 	case "tab":
 		if m.focusIndex == 2 {
 			m.headerInput.InsertString("  ")
@@ -274,4 +284,75 @@ func (m Model) updateInputs(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+o":
+		m.showOptionsModal = false
+		m.proxyInput.Blur()
+		return m, nil
+	case "ctrl+c":
+		return m, tea.Quit
+	}
+
+	// Proxy入力欄（Cursor == 3）選択中のキー操作
+	if m.optionsCursor == 3 {
+		switch msg.String() {
+		case "up", "shift+tab":
+			m.optionsCursor = 2
+			m.proxyInput.Blur()
+			return m, nil
+		case "down", "tab":
+			m.optionsCursor = 0
+			m.proxyInput.Blur()
+			return m, nil
+		case "enter":
+			m.optionsCursor = 0
+			m.proxyInput.Blur()
+			return m, nil
+		default:
+			var cmd tea.Cmd
+			m.proxyInput, cmd = m.proxyInput.Update(msg)
+			return m, cmd
+		}
+	}
+
+	// チェックボックス項目（Cursor == 0, 1, 2）選択中のキー操作
+	switch msg.String() {
+	case "j", "down", "tab":
+		m.optionsCursor++
+		if m.optionsCursor > 3 {
+			m.optionsCursor = 0
+		}
+		if m.optionsCursor == 3 {
+			m.proxyInput.Focus()
+		} else {
+			m.proxyInput.Blur()
+		}
+		return m, nil
+	case "k", "up", "shift+tab":
+		m.optionsCursor--
+		if m.optionsCursor < 0 {
+			m.optionsCursor = 3
+		}
+		if m.optionsCursor == 3 {
+			m.proxyInput.Focus()
+		} else {
+			m.proxyInput.Blur()
+		}
+		return m, nil
+	case " ", "enter":
+		switch m.optionsCursor {
+		case 0:
+			m.insecure = !m.insecure
+		case 1:
+			m.verbose = !m.verbose
+		case 2:
+			m.location = !m.location
+		}
+		return m, nil
+	}
+
+	return m, nil
 }
