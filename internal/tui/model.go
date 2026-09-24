@@ -61,3 +61,18 @@ func (m Model) BuildCurlCmd() string {
 	}
 	return cmd
 }
+
+// SetInsecure sets the insecure flag
+func (m *Model) SetInsecure(insecure bool) {
+	m.insecure = insecure
+}
+
+// SetVerbose sets the verbose flag
+func (m *Model) SetVerbose(verbose bool) {
+	m.verbose = verbose
+}
+
+// SetProxy sets the proxy URL
+func (m *Model) SetProxy(proxy string) {
+	m.proxyInput.SetValue(proxy)
+}

@@ -82,3 +82,18 @@ func TestParse(t *testing.T) {
 		t.Errorf("Proxy = %v, want http://proxy.internal:3128", opts.Proxy)
 	}
 }
+
+func TestParseWithUserAndUserAgent(t *testing.T) {
+	cmdStr := "curl 'https://example.com' -u admin:secret -A 'MyCustomAgent/1.0'"
+	opts, err := Parse(cmdStr)
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+
+	if opts.User != "admin:secret" {
+		t.Errorf("User = %v, want admin:secret", opts.User)
+	}
+	if opts.UserAgent != "MyCustomAgent/1.0" {
+		t.Errorf("UserAgent = %v, want MyCustomAgent/1.0", opts.UserAgent)
+	}
+}
