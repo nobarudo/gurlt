@@ -106,3 +106,21 @@ func TestOptionsModalNavigationAndProxyEdit(t *testing.T) {
 		t.Errorf("expected cursor at 2 after pressing k, got %d", m.optionsCursor)
 	}
 }
+
+func TestInitialModelJSONPrettify(t *testing.T) {
+	rawJSON := `{"foo":"bar","num":123}`
+	m := InitialModel("https://api.example.com", "POST", "", rawJSON, "json", false, "", "")
+
+	expectedIndent := "{\n  \"foo\": \"bar\",\n  \"num\": 123\n}"
+	if m.bodyInput.Value() != expectedIndent {
+		t.Errorf("expected pretty JSON body:\n%s\ngot:\n%s", expectedIndent, m.bodyInput.Value())
+	}
+
+	// 不正なJSONはそのまま入ること
+	invalidJSON := `{"foo":`
+	m2 := InitialModel("https://api.example.com", "POST", "", invalidJSON, "json", false, "", "")
+	if m2.bodyInput.Value() != invalidJSON {
+		t.Errorf("expected raw invalid JSON body, got: %s", m2.bodyInput.Value())
+	}
+}
+

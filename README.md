@@ -21,11 +21,14 @@ go install github.com/nobarudo/gurlt@latest
 gurlt https://example.com/
 ```
 
-**2. With Flags (-X, -H, -d, -u, -A, -L)**
+**2. With Flags (-X, -H, -d, -u, -A, -L, --json)**
 
 ```bash
-gurlt -X POST -H "Authorization: Bearer token" -d '{"test":123}' https://httpbin.org/post
+# JSON request shorthand (automatically sets method to POST, and adds JSON headers)
+gurlt --json '{"name":"alice","age":30}' https://httpbin.org/post
 
+# Standard cURL flags
+gurlt -X POST -H "Authorization: Bearer token" -d '{"test":123}' https://httpbin.org/post
 ```
 
 **3.cURL Parse**

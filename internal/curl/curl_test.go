@@ -97,3 +97,35 @@ func TestParseWithUserAndUserAgent(t *testing.T) {
 		t.Errorf("UserAgent = %v, want MyCustomAgent/1.0", opts.UserAgent)
 	}
 }
+
+func TestParseWithJSON(t *testing.T) {
+	cmdStr := `curl 'https://example.com/api' --json '{"name":"gurlt","count":42}'`
+	opts, err := Parse(cmdStr)
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+
+	if opts.Method != "POST" {
+		t.Errorf("Method = %v, want POST", opts.Method)
+	}
+	if opts.Body != `{"name":"gurlt","count":42}` {
+		t.Errorf("Body = %v, want %v", opts.Body, `{"name":"gurlt","count":42}`)
+	}
+	hasAccept := false
+	hasContentType := false
+	for _, h := range opts.Headers {
+		if h == "Accept: application/json" {
+			hasAccept = true
+		}
+		if h == "Content-Type: application/json" {
+			hasContentType = true
+		}
+	}
+	if !hasAccept {
+		t.Errorf("expected Accept: application/json in headers, got %v", opts.Headers)
+	}
+	if !hasContentType {
+		t.Errorf("expected Content-Type: application/json in headers, got %v", opts.Headers)
+	}
+}
+

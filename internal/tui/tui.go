@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"bytes"
+	"encoding/json"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -64,7 +66,16 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 	b.SetHeight(5)
 	b.SetWidth(60)
 	if body != "" {
-		b.SetValue(body)
+		if format == "json" {
+			var pretty bytes.Buffer
+			if err := json.Indent(&pretty, []byte(body), "", "  "); err == nil {
+				b.SetValue(pretty.String())
+			} else {
+				b.SetValue(body)
+			}
+		} else {
+			b.SetValue(body)
+		}
 	}
 
 	sInput := textinput.New()

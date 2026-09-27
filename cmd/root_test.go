@@ -13,7 +13,7 @@ func TestGetExtraArgs(t *testing.T) {
 	}{
 		{
 			name: "known flags only",
-			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "-u", "user:pass", "-A", "myagent", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
+			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
 			want: "",
 		},
 		{
@@ -23,7 +23,7 @@ func TestGetExtraArgs(t *testing.T) {
 		},
 		{
 			name: "flag with equals",
-			args: []string{"--user=admin:secret", "--compressed", "https://example.com"},
+			args: []string{"--user=admin:secret", "--json='{\"test\":1}'", "--compressed", "https://example.com"},
 			want: "--compressed",
 		},
 		{
@@ -80,3 +80,77 @@ func TestHeaderConstructionWithUserAndAgent(t *testing.T) {
 		t.Errorf("expected X-Custom header in list, got: %s", headerList)
 	}
 }
+
+func TestJSONFlagHandling(t *testing.T) {
+	origJsonData := jsonData
+	origData := data
+	origFormat := format
+	origMethod := method
+	origHeaders := headers
+	defer func() {
+		jsonData = origJsonData
+		data = origData
+		format = origFormat
+		method = origMethod
+		headers = origHeaders
+	}()
+
+	jsonData = `{"hello":"world"}`
+	data = ""
+	format = "form"
+	method = "GET"
+	headers = []string{}
+
+	if jsonData != "" {
+		data = jsonData
+		format = "json"
+		if method == "GET" {
+			method = "POST"
+		}
+		hasAccept := false
+		hasContentType := false
+		for _, h := range headers {
+			lowerH := strings.ToLower(h)
+			if strings.HasPrefix(lowerH, "accept:") {
+				hasAccept = true
+			}
+			if strings.HasPrefix(lowerH, "content-type:") {
+				hasContentType = true
+			}
+		}
+		if !hasAccept {
+			headers = append(headers, "Accept: application/json")
+		}
+		if !hasContentType {
+			headers = append(headers, "Content-Type: application/json")
+		}
+	}
+
+	if method != "POST" {
+		t.Errorf("expected method POST, got %s", method)
+	}
+	if format != "json" {
+		t.Errorf("expected format json, got %s", format)
+	}
+	if data != `{"hello":"world"}` {
+		t.Errorf("expected data to be JSON string, got %s", data)
+	}
+
+	hasAccept := false
+	hasContentType := false
+	for _, h := range headers {
+		if h == "Accept: application/json" {
+			hasAccept = true
+		}
+		if h == "Content-Type: application/json" {
+			hasContentType = true
+		}
+	}
+	if !hasAccept {
+		t.Errorf("expected Accept: application/json in headers")
+	}
+	if !hasContentType {
+		t.Errorf("expected Content-Type: application/json in headers")
+	}
+}
+

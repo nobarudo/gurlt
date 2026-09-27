@@ -20,6 +20,7 @@ var (
 	data      string
 	user      string
 	userAgent string
+	jsonData  string
 	location  bool
 	logFile   string
 )
@@ -60,6 +61,32 @@ var rootCmd = &cobra.Command{
 					location = parsedOpts.Location
 				}
 				headers = append(headers, parsedOpts.Headers...)
+			}
+		}
+
+		// --json オプションが指定された場合
+		if jsonData != "" {
+			data = jsonData
+			format = "json"
+			if method == "GET" {
+				method = "POST"
+			}
+			hasAccept := false
+			hasContentType := false
+			for _, h := range headers {
+				lowerH := strings.ToLower(h)
+				if strings.HasPrefix(lowerH, "accept:") {
+					hasAccept = true
+				}
+				if strings.HasPrefix(lowerH, "content-type:") {
+					hasContentType = true
+				}
+			}
+			if !hasAccept {
+				headers = append(headers, "Accept: application/json")
+			}
+			if !hasContentType {
+				headers = append(headers, "Content-Type: application/json")
 			}
 		}
 
@@ -129,6 +156,7 @@ func getExtraArgs(args []string) string {
 		"-X": true, "--request": true,
 		"-H": true, "--header": true,
 		"-d": true, "--data": true, "--data-raw": true,
+		"--json": true,
 		"-u": true, "--user": true,
 		"-A": true, "--user-agent": true,
 		"-f": true, "--format": true,
@@ -188,6 +216,7 @@ func init() {
 	rootCmd.Flags().StringArrayVarP(&headers, "header", "H", []string{}, "Pass custom header(s) to server")
 	rootCmd.Flags().StringVarP(&data, "data", "d", "", "HTTP POST data")
 	rootCmd.Flags().StringVar(&data, "data-raw", "", "HTTP POST data (same as --data)")
+	rootCmd.Flags().StringVar(&jsonData, "json", "", "HTTP POST data with JSON content-type and accept headers")
 	rootCmd.Flags().StringVarP(&user, "user", "u", "", "Server user and password")
 	rootCmd.Flags().StringVarP(&userAgent, "user-agent", "A", "", "Send User-Agent <name> to server")
 	rootCmd.Flags().BoolVarP(&location, "location", "L", false, "Follow redirects")

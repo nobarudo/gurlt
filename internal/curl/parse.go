@@ -55,6 +55,29 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 				opts.Method = "POST" // curlの仕様: -dがあるとPOSTになる
 				i++
 			}
+		case "--json":
+			if i+1 < len(args) {
+				opts.Body = args[i+1]
+				opts.Method = "POST"
+				hasAccept := false
+				hasContentType := false
+				for _, h := range opts.Headers {
+					lowerH := strings.ToLower(h)
+					if strings.HasPrefix(lowerH, "accept:") {
+						hasAccept = true
+					}
+					if strings.HasPrefix(lowerH, "content-type:") {
+						hasContentType = true
+					}
+				}
+				if !hasAccept {
+					opts.Headers = append(opts.Headers, "Accept: application/json")
+				}
+				if !hasContentType {
+					opts.Headers = append(opts.Headers, "Content-Type: application/json")
+				}
+				i++
+			}
 		case "-u", "--user":
 			if i+1 < len(args) {
 				opts.User = args[i+1]
