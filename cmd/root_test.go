@@ -13,7 +13,7 @@ func TestGetExtraArgs(t *testing.T) {
 	}{
 		{
 			name: "known flags only",
-			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
+			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-k", "-x", "http://127.0.0.1:8080", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
 			want: "",
 		},
 		{
@@ -23,7 +23,7 @@ func TestGetExtraArgs(t *testing.T) {
 		},
 		{
 			name: "flag with equals",
-			args: []string{"--user=admin:secret", "--json='{\"test\":1}'", "--max-time=10", "--connect-timeout=5", "--compressed", "https://example.com"},
+			args: []string{"--user=admin:secret", "--json='{\"test\":1}'", "--max-time=10", "--connect-timeout=5", "--proxy=http://proxy:8080", "--compressed", "https://example.com"},
 			want: "--compressed",
 		},
 		{
@@ -172,5 +172,25 @@ func TestTimeoutFlagsParsed(t *testing.T) {
 		t.Errorf("expected connectTimeout 3.0, got %v", connectTimeout)
 	}
 }
+
+func TestInsecureAndProxyFlags(t *testing.T) {
+	origInsecure := insecure
+	origProxy := proxy
+	defer func() {
+		insecure = origInsecure
+		proxy = origProxy
+	}()
+
+	insecure = true
+	proxy = "http://127.0.0.1:8888"
+
+	if !insecure {
+		t.Errorf("expected insecure to be true")
+	}
+	if proxy != "http://127.0.0.1:8888" {
+		t.Errorf("expected proxy to be http://127.0.0.1:8888, got %s", proxy)
+	}
+}
+
 
 

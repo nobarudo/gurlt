@@ -21,7 +21,7 @@ go install github.com/nobarudo/gurlt@latest
 gurlt https://example.com/
 ```
 
-**2. With Flags (-X, -H, -d, -u, -A, -L, --json, -m)**
+**2. With Flags (-X, -H, -d, -u, -A, -L, --json, -m, -k, -x)**
 
 ```bash
 # JSON request shorthand (automatically sets method to POST, and adds JSON headers)
@@ -29,6 +29,9 @@ gurlt --json '{"name":"alice","age":30}' https://httpbin.org/post
 
 # Timeout control (maximum transfer time & connection timeout in seconds)
 gurlt -m 10 --connect-timeout 3.5 https://httpbin.org/delay/2
+
+# Insecure SSL connections and Proxy
+gurlt -k -x http://localhost:8080 https://localhost:8443/
 
 # Standard cURL flags
 gurlt -X POST -H "Authorization: Bearer token" -d '{"test":123}' https://httpbin.org/post

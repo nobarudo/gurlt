@@ -24,6 +24,8 @@ var (
 	maxTime        float64
 	connectTimeout float64
 	location       bool
+	insecure       bool
+	proxy          string
 	logFile        string
 )
 
@@ -61,6 +63,12 @@ var rootCmd = &cobra.Command{
 				}
 				if parsedOpts.Location {
 					location = parsedOpts.Location
+				}
+				if parsedOpts.Insecure {
+					insecure = parsedOpts.Insecure
+				}
+				if parsedOpts.Proxy != "" {
+					proxy = parsedOpts.Proxy
 				}
 				if parsedOpts.MaxTime > 0 {
 					maxTime = parsedOpts.MaxTime
@@ -135,15 +143,15 @@ var rootCmd = &cobra.Command{
 		if connectTimeout > 0 {
 			m.SetConnectTimeout(connectTimeout)
 		}
+		if insecure {
+			m.SetInsecure(true)
+		}
+		if proxy != "" {
+			m.SetProxy(proxy)
+		}
 		if parsedOpts != nil {
-			if parsedOpts.Insecure {
-				m.SetInsecure(true)
-			}
 			if parsedOpts.Verbose {
 				m.SetVerbose(true)
-			}
-			if parsedOpts.Proxy != "" {
-				m.SetProxy(parsedOpts.Proxy)
 			}
 		}
 
@@ -176,10 +184,12 @@ func getExtraArgs(args []string) string {
 		"-f":                true, "--format": true,
 		"-m":                true, "--max-time": true,
 		"--connect-timeout": true,
+		"-x":                true, "--proxy": true,
 		"--log":             true,
 	}
 	knownBoolFlags := map[string]bool{
 		"-L": true, "--location": true,
+		"-k": true, "--insecure": true,
 	}
 
 	for i := 0; i < len(args); i++ {
@@ -237,6 +247,8 @@ func init() {
 	rootCmd.Flags().StringVarP(&userAgent, "user-agent", "A", "", "Send User-Agent <name> to server")
 	rootCmd.Flags().Float64VarP(&maxTime, "max-time", "m", 0, "Maximum time allowed for the transfer (in seconds)")
 	rootCmd.Flags().Float64Var(&connectTimeout, "connect-timeout", 0, "Maximum time allowed for connection (in seconds)")
+	rootCmd.Flags().BoolVarP(&insecure, "insecure", "k", false, "Allow insecure server connections when using SSL")
+	rootCmd.Flags().StringVarP(&proxy, "proxy", "x", "", "[protocol://]host[:port] Use this proxy")
 	rootCmd.Flags().BoolVarP(&location, "location", "L", false, "Follow redirects")
 	rootCmd.Flags().StringVar(&logFile, "log", "", "Append raw request and response to a file (e.g., --log audit.log)")
 }
