@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/nobarudo/gurlt/internal/client"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -165,6 +167,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showOptionsModal = true
 		m.optionsCursor = 0
 		m.proxyInput.Blur()
+		m.timeoutInput.Blur()
 		return m, nil
 	case "tab":
 		if m.focusIndex == 2 {
@@ -236,7 +239,19 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.isLoading = true
 			m.footerMsg = ""
 			m.responseView.SetContent(infoStyle.Render("⏳ Loading..."))
-			return m, sendRequest(m.methodInput.Value(), m.urlInput.Value(), m.headerInput.Value(), m.bodyInput.Value(), m.format, m.location, m.BuildCurlCmd())
+			opts := client.RequestOptions{
+				Method:         m.methodInput.Value(),
+				URL:            m.urlInput.Value(),
+				Headers:        m.headerInput.Value(),
+				Body:           m.bodyInput.Value(),
+				Format:         m.format,
+				Location:       m.location,
+				Insecure:       m.insecure,
+				Proxy:          strings.TrimSpace(m.proxyInput.Value()),
+				MaxTime:        m.maxTime,
+				ConnectTimeout: m.connectTimeout,
+			}
+			return m, sendRequest(opts, m.BuildCurlCmd())
 		}
 	case "ctrl+a":
 		if !m.showRawView {
@@ -298,24 +313,53 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 2. モーダル内の項目選択モードの処理
+	// 2. Timeout入力欄を編集中（Focused）の場合の処理
+	if m.timeoutInput.Focused() {
+		switch msg.String() {
+		case "esc", "enter":
+			valStr := strings.TrimSpace(m.timeoutInput.Value())
+			if valStr == "" || valStr == "0" {
+				m.maxTime = 0
+				m.timeoutInput.SetValue("")
+			} else if val, err := strconv.ParseFloat(valStr, 64); err == nil && val >= 0 {
+				m.maxTime = val
+			} else {
+				if m.maxTime > 0 {
+					m.timeoutInput.SetValue(strconv.FormatFloat(m.maxTime, 'f', -1, 64))
+				} else {
+					m.timeoutInput.SetValue("")
+				}
+			}
+			m.timeoutInput.Blur()
+			return m, nil
+		case "ctrl+c":
+			return m, tea.Quit
+		default:
+			var cmd tea.Cmd
+			m.timeoutInput, cmd = m.timeoutInput.Update(msg)
+			return m, cmd
+		}
+	}
+
+	// 3. モーダル内の項目選択モードの処理
 	switch msg.String() {
 	case "esc", "ctrl+o":
 		m.showOptionsModal = false
 		m.proxyInput.Blur()
+		m.timeoutInput.Blur()
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
 	case "j", "down", "tab":
 		m.optionsCursor++
-		if m.optionsCursor > 3 {
+		if m.optionsCursor > 4 {
 			m.optionsCursor = 0
 		}
 		return m, nil
 	case "k", "up", "shift+tab":
 		m.optionsCursor--
 		if m.optionsCursor < 0 {
-			m.optionsCursor = 3
+			m.optionsCursor = 4
 		}
 		return m, nil
 	case " ", "enter":
@@ -327,8 +371,10 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 2:
 			m.location = !m.location
 		case 3:
-			// Proxy欄でSpaceまたはEnterを押すとURL入力受付状態に切り替え
 			cmd := m.proxyInput.Focus()
+			return m, cmd
+		case 4:
+			cmd := m.timeoutInput.Focus()
 			return m, cmd
 		}
 		return m, nil

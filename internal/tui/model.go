@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/nobarudo/gurlt/internal/client"
@@ -39,6 +40,9 @@ type Model struct {
 	insecure         bool
 	verbose          bool
 	proxyInput       textinput.Model
+	maxTime          float64
+	connectTimeout   float64
+	timeoutInput     textinput.Model
 	optionsCursor    int
 }
 
@@ -55,6 +59,8 @@ func (m Model) BuildCurlCmd() string {
 		m.insecure,
 		m.verbose,
 		proxy,
+		m.maxTime,
+		m.connectTimeout,
 	)
 	if m.extraArgs != "" {
 		cmd += " " + m.extraArgs
@@ -75,4 +81,19 @@ func (m *Model) SetVerbose(verbose bool) {
 // SetProxy sets the proxy URL
 func (m *Model) SetProxy(proxy string) {
 	m.proxyInput.SetValue(proxy)
+}
+
+// SetMaxTime sets the max transfer timeout in seconds
+func (m *Model) SetMaxTime(sec float64) {
+	m.maxTime = sec
+	if sec > 0 {
+		m.timeoutInput.SetValue(strconv.FormatFloat(sec, 'f', -1, 64))
+	} else {
+		m.timeoutInput.SetValue("")
+	}
+}
+
+// SetConnectTimeout sets the connect timeout in seconds
+func (m *Model) SetConnectTimeout(sec float64) {
+	m.connectTimeout = sec
 }

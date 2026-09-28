@@ -87,18 +87,24 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 	pInput.Prompt = "  URL: "
 	pInput.CharLimit = 128
 
+	tInput := textinput.New()
+	tInput.Placeholder = "10 (0 for none)"
+	tInput.Prompt = "  Seconds: "
+	tInput.CharLimit = 16
+
 	return Model{
-		methodInput: m,
-		urlInput:    u,
-		headerInput: h,
-		bodyInput:   b,
-		saveInput:   sInput,
-		proxyInput:  pInput,
-		focusIndex:  1,
-		format:      format,
-		location:    location,
-		logFile:     logFile,
-		extraArgs:   extraArgs,
+		methodInput:  m,
+		urlInput:     u,
+		headerInput:  h,
+		bodyInput:    b,
+		saveInput:    sInput,
+		proxyInput:   pInput,
+		timeoutInput: tInput,
+		focusIndex:   1,
+		format:       format,
+		location:     location,
+		logFile:      logFile,
+		extraArgs:    extraArgs,
 	}
 }
 

@@ -1,6 +1,7 @@
 package curl
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/mattn/go-shellwords"
@@ -8,16 +9,18 @@ import (
 
 // ParsedOptions は抽出したcURLのオプションを格納します
 type ParsedOptions struct {
-	URL       string
-	Method    string
-	Headers   []string
-	Body      string
-	User      string
-	UserAgent string
-	Location  bool
-	Insecure  bool
-	Verbose   bool
-	Proxy     string
+	URL            string
+	Method         string
+	Headers        []string
+	Body           string
+	User           string
+	UserAgent      string
+	Location       bool
+	Insecure       bool
+	Verbose        bool
+	Proxy          string
+	MaxTime        float64
+	ConnectTimeout float64
 }
 
 // Parse はcURLコマンドの文字列を安全に分解し、必要な設定だけを抽出します
@@ -97,6 +100,20 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 		case "-x", "--proxy":
 			if i+1 < len(args) {
 				opts.Proxy = args[i+1]
+				i++
+			}
+		case "-m", "--max-time":
+			if i+1 < len(args) {
+				if val, err := strconv.ParseFloat(args[i+1], 64); err == nil {
+					opts.MaxTime = val
+				}
+				i++
+			}
+		case "--connect-timeout":
+			if i+1 < len(args) {
+				if val, err := strconv.ParseFloat(args[i+1], 64); err == nil {
+					opts.ConnectTimeout = val
+				}
 				i++
 			}
 		default:

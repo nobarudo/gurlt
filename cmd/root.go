@@ -20,9 +20,11 @@ var (
 	data      string
 	user      string
 	userAgent string
-	jsonData  string
-	location  bool
-	logFile   string
+	jsonData       string
+	maxTime        float64
+	connectTimeout float64
+	location       bool
+	logFile        string
 )
 
 var rootCmd = &cobra.Command{
@@ -59,6 +61,12 @@ var rootCmd = &cobra.Command{
 				}
 				if parsedOpts.Location {
 					location = parsedOpts.Location
+				}
+				if parsedOpts.MaxTime > 0 {
+					maxTime = parsedOpts.MaxTime
+				}
+				if parsedOpts.ConnectTimeout > 0 {
+					connectTimeout = parsedOpts.ConnectTimeout
 				}
 				headers = append(headers, parsedOpts.Headers...)
 			}
@@ -121,6 +129,12 @@ var rootCmd = &cobra.Command{
 		extraArgs := getExtraArgs(os.Args[1:])
 
 		m := tui.InitialModel(urlInput, method, headerList, data, format, location, logFile, extraArgs)
+		if maxTime > 0 {
+			m.SetMaxTime(maxTime)
+		}
+		if connectTimeout > 0 {
+			m.SetConnectTimeout(connectTimeout)
+		}
 		if parsedOpts != nil {
 			if parsedOpts.Insecure {
 				m.SetInsecure(true)
@@ -156,11 +170,13 @@ func getExtraArgs(args []string) string {
 		"-X": true, "--request": true,
 		"-H": true, "--header": true,
 		"-d": true, "--data": true, "--data-raw": true,
-		"--json": true,
-		"-u": true, "--user": true,
-		"-A": true, "--user-agent": true,
-		"-f": true, "--format": true,
-		"--log": true,
+		"--json":            true,
+		"-u":                true, "--user": true,
+		"-A":                true, "--user-agent": true,
+		"-f":                true, "--format": true,
+		"-m":                true, "--max-time": true,
+		"--connect-timeout": true,
+		"--log":             true,
 	}
 	knownBoolFlags := map[string]bool{
 		"-L": true, "--location": true,
@@ -219,6 +235,8 @@ func init() {
 	rootCmd.Flags().StringVar(&jsonData, "json", "", "HTTP POST data with JSON content-type and accept headers")
 	rootCmd.Flags().StringVarP(&user, "user", "u", "", "Server user and password")
 	rootCmd.Flags().StringVarP(&userAgent, "user-agent", "A", "", "Send User-Agent <name> to server")
+	rootCmd.Flags().Float64VarP(&maxTime, "max-time", "m", 0, "Maximum time allowed for the transfer (in seconds)")
+	rootCmd.Flags().Float64Var(&connectTimeout, "connect-timeout", 0, "Maximum time allowed for connection (in seconds)")
 	rootCmd.Flags().BoolVarP(&location, "location", "L", false, "Follow redirects")
 	rootCmd.Flags().StringVar(&logFile, "log", "", "Append raw request and response to a file (e.g., --log audit.log)")
 }

@@ -1,14 +1,31 @@
 package client
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 )
+
+// RequestOptions はリクエスト実行時のオプションを保持します
+type RequestOptions struct {
+	Method         string
+	URL            string
+	Headers        string
+	Body           string
+	Format         string
+	Location       bool
+	Insecure       bool
+	Proxy          string
+	MaxTime        float64
+	ConnectTimeout float64
+}
 
 // Result はHTTPリクエストの結果を格納する構造体です
 type Result struct {
@@ -53,16 +70,16 @@ func (d *dumpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return res, nil
 }
 
-func Send(method, reqUrl, headers, body, format string, location bool) Result {
+func Send(opts RequestOptions) Result {
 	var reqBody io.Reader
 	var history []HistoryEntry
 
-	if body != "" {
-		if format == "json" {
-			reqBody = strings.NewReader(body)
+	if opts.Body != "" {
+		if opts.Format == "json" {
+			reqBody = strings.NewReader(opts.Body)
 		} else {
 			form := url.Values{}
-			for _, line := range strings.Split(body, "\n") {
+			for _, line := range strings.Split(opts.Body, "\n") {
 				parts := strings.SplitN(line, "=", 2)
 				if len(parts) == 2 {
 					form.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
@@ -72,26 +89,54 @@ func Send(method, reqUrl, headers, body, format string, location bool) Result {
 		}
 	}
 
-	req, err := http.NewRequest(method, reqUrl, reqBody)
+	req, err := http.NewRequest(opts.Method, opts.URL, reqBody)
 	if err != nil {
 		return Result{Err: err}
 	}
 
-	for _, line := range strings.Split(headers, "\n") {
+	for _, line := range strings.Split(opts.Headers, "\n") {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
 			req.Header.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
 		}
 	}
 
+	dialer := &net.Dialer{
+		KeepAlive: 30 * time.Second,
+	}
+	if opts.ConnectTimeout > 0 {
+		dialer.Timeout = time.Duration(opts.ConnectTimeout * float64(time.Second))
+	}
+
+	baseTransport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	if opts.ConnectTimeout > 0 {
+		baseTransport.TLSHandshakeTimeout = time.Duration(opts.ConnectTimeout * float64(time.Second))
+	}
+	if opts.Insecure {
+		baseTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+	if opts.Proxy != "" {
+		if proxyURL, err := url.Parse(opts.Proxy); err == nil {
+			baseTransport.Proxy = http.ProxyURL(proxyURL)
+		}
+	}
+
 	dt := &dumpTransport{
-		Transport: http.DefaultTransport,
+		Transport: baseTransport,
 	}
 
 	httpClient := &http.Client{
 		Transport: dt,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if !location {
+			if !opts.Location {
 				return http.ErrUseLastResponse
 			}
 
@@ -109,6 +154,10 @@ func Send(method, reqUrl, headers, body, format string, location bool) Result {
 			}
 			return nil
 		},
+	}
+
+	if opts.MaxTime > 0 {
+		httpClient.Timeout = time.Duration(opts.MaxTime * float64(time.Second))
 	}
 
 	res, err := httpClient.Do(req)

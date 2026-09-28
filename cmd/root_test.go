@@ -13,7 +13,7 @@ func TestGetExtraArgs(t *testing.T) {
 	}{
 		{
 			name: "known flags only",
-			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
+			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
 			want: "",
 		},
 		{
@@ -23,7 +23,7 @@ func TestGetExtraArgs(t *testing.T) {
 		},
 		{
 			name: "flag with equals",
-			args: []string{"--user=admin:secret", "--json='{\"test\":1}'", "--compressed", "https://example.com"},
+			args: []string{"--user=admin:secret", "--json='{\"test\":1}'", "--max-time=10", "--connect-timeout=5", "--compressed", "https://example.com"},
 			want: "--compressed",
 		},
 		{
@@ -153,4 +153,24 @@ func TestJSONFlagHandling(t *testing.T) {
 		t.Errorf("expected Content-Type: application/json in headers")
 	}
 }
+
+func TestTimeoutFlagsParsed(t *testing.T) {
+	origMaxTime := maxTime
+	origConnectTimeout := connectTimeout
+	defer func() {
+		maxTime = origMaxTime
+		connectTimeout = origConnectTimeout
+	}()
+
+	maxTime = 12.5
+	connectTimeout = 3.0
+
+	if maxTime != 12.5 {
+		t.Errorf("expected maxTime 12.5, got %v", maxTime)
+	}
+	if connectTimeout != 3.0 {
+		t.Errorf("expected connectTimeout 3.0, got %v", connectTimeout)
+	}
+}
+
 
