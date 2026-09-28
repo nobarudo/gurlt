@@ -14,12 +14,13 @@ import (
 )
 
 var (
-	method    string
-	format    string
-	headers   []string
-	data      string
-	user      string
-	userAgent string
+	method         string
+	format         string
+	headers        []string
+	data           string
+	forms          []string
+	user           string
+	userAgent      string
 	jsonData       string
 	maxTime        float64
 	connectTimeout float64
@@ -106,6 +107,20 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
+		// -F, --form オプションが指定された場合
+		if len(forms) > 0 {
+			data = strings.Join(forms, "\n")
+			format = "multipart"
+			if method == "GET" {
+				method = "POST"
+			}
+		} else if parsedOpts != nil && parsedOpts.IsMultipart {
+			format = "multipart"
+			if method == "GET" {
+				method = "POST"
+			}
+		}
+
 		// -d (data) が指定されていて、かつ -X がデフォルト(GET)ならPOSTにする
 		if data != "" && method == "GET" {
 			method = "POST"
@@ -178,6 +193,7 @@ func getExtraArgs(args []string) string {
 		"-X": true, "--request": true,
 		"-H": true, "--header": true,
 		"-d": true, "--data": true, "--data-raw": true,
+		"-F": true, "--form": true,
 		"--json":            true,
 		"-u":                true, "--user": true,
 		"-A":                true, "--user-agent": true,
@@ -235,13 +251,14 @@ func getExtraArgs(args []string) string {
 
 func init() {
 	// gurlt 独自のフラグ
-	rootCmd.Flags().StringVarP(&format, "format", "f", "form", "Data format (json, form)")
+	rootCmd.Flags().StringVarP(&format, "format", "f", "form", "Data format (json, form, multipart)")
 
 	// curl 互換フラグ
 	rootCmd.Flags().StringVarP(&method, "request", "X", "GET", "Specify request command to use")
 	rootCmd.Flags().StringArrayVarP(&headers, "header", "H", []string{}, "Pass custom header(s) to server")
 	rootCmd.Flags().StringVarP(&data, "data", "d", "", "HTTP POST data")
 	rootCmd.Flags().StringVar(&data, "data-raw", "", "HTTP POST data (same as --data)")
+	rootCmd.Flags().StringArrayVarP(&forms, "form", "F", []string{}, "Specify multipart MIME data")
 	rootCmd.Flags().StringVar(&jsonData, "json", "", "HTTP POST data with JSON content-type and accept headers")
 	rootCmd.Flags().StringVarP(&user, "user", "u", "", "Server user and password")
 	rootCmd.Flags().StringVarP(&userAgent, "user-agent", "A", "", "Send User-Agent <name> to server")

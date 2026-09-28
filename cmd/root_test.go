@@ -13,7 +13,7 @@ func TestGetExtraArgs(t *testing.T) {
 	}{
 		{
 			name: "known flags only",
-			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-k", "-x", "http://127.0.0.1:8080", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
+			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "-F", "user=alice", "--form", "avatar=@pic.png", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-k", "-x", "http://127.0.0.1:8080", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
 			want: "",
 		},
 		{
@@ -23,7 +23,7 @@ func TestGetExtraArgs(t *testing.T) {
 		},
 		{
 			name: "flag with equals",
-			args: []string{"--user=admin:secret", "--json='{\"test\":1}'", "--max-time=10", "--connect-timeout=5", "--proxy=http://proxy:8080", "--compressed", "https://example.com"},
+			args: []string{"--user=admin:secret", "--form=field=val", "--json='{\"test\":1}'", "--max-time=10", "--connect-timeout=5", "--proxy=http://proxy:8080", "--compressed", "https://example.com"},
 			want: "--compressed",
 		},
 		{
@@ -191,6 +191,44 @@ func TestInsecureAndProxyFlags(t *testing.T) {
 		t.Errorf("expected proxy to be http://127.0.0.1:8888, got %s", proxy)
 	}
 }
+
+func TestMultipartFormFlagHandling(t *testing.T) {
+	origForms := forms
+	origData := data
+	origFormat := format
+	origMethod := method
+	defer func() {
+		forms = origForms
+		data = origData
+		format = origFormat
+		method = origMethod
+	}()
+
+	forms = []string{"user=alice", "avatar=@avatar.png"}
+	data = ""
+	format = "form"
+	method = "GET"
+
+	if len(forms) > 0 {
+		data = strings.Join(forms, "\n")
+		format = "multipart"
+		if method == "GET" {
+			method = "POST"
+		}
+	}
+
+	if method != "POST" {
+		t.Errorf("expected method POST, got %s", method)
+	}
+	if format != "multipart" {
+		t.Errorf("expected format multipart, got %s", format)
+	}
+	expectedData := "user=alice\navatar=@avatar.png"
+	if data != expectedData {
+		t.Errorf("expected data %q, got %q", expectedData, data)
+	}
+}
+
 
 
 

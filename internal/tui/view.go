@@ -55,6 +55,8 @@ func (m Model) mainView() string {
 	bodyLabel := "Params (key=value):"
 	if m.format == "json" {
 		bodyLabel = "Body (JSON):"
+	} else if m.format == "multipart" {
+		bodyLabel = "Form Data (key=val or key=@file):"
 	}
 	content += renderLabel(bodyLabel, m.focusIndex == 3) + "\n" + m.bodyInput.View() + "\n"
 	content += dividerStyle.Render(strings.Repeat("─", m.terminalWidth-10)) + "\n"

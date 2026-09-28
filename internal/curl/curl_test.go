@@ -50,6 +50,21 @@ func TestBuild(t *testing.T) {
 			connectTimeout: 3,
 			want:           "curl -X POST 'https://example.com/login' -L -k -v -x 'http://proxy.example.com:8080' -m 10.5 --connect-timeout 3 -H 'Content-Type: application/json' -d '{\"user\":\"test\"}'",
 		},
+		{
+			name:           "multipart form request",
+			method:         "POST",
+			reqUrl:         "https://example.com/upload",
+			headers:        "Authorization: Bearer token",
+			body:           "name=alice\nfile=@test.png",
+			format:         "multipart",
+			location:       false,
+			insecure:       false,
+			verbose:        false,
+			proxy:          "",
+			maxTime:        0,
+			connectTimeout: 0,
+			want:           "curl -X POST 'https://example.com/upload' -H 'Authorization: Bearer token' -F 'name=alice' -F 'file=@test.png'",
+		},
 	}
 
 	for _, tt := range tests {
@@ -149,5 +164,34 @@ func TestParseWithTimeout(t *testing.T) {
 		t.Errorf("ConnectTimeout = %v, want 4", opts.ConnectTimeout)
 	}
 }
+
+func TestParseWithMultipart(t *testing.T) {
+	cmdStr := "curl 'https://example.com/api' -F 'user=bob' -F 'avatar=@profile.jpg'"
+	opts, err := Parse(cmdStr)
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+
+	if opts.Method != "POST" {
+		t.Errorf("Method = %v, want POST", opts.Method)
+	}
+	if !opts.IsMultipart {
+		t.Errorf("expected IsMultipart to be true")
+	}
+	if len(opts.Forms) != 2 {
+		t.Fatalf("expected 2 forms, got %d", len(opts.Forms))
+	}
+	if opts.Forms[0] != "user=bob" {
+		t.Errorf("Forms[0] = %v, want user=bob", opts.Forms[0])
+	}
+	if opts.Forms[1] != "avatar=@profile.jpg" {
+		t.Errorf("Forms[1] = %v, want avatar=@profile.jpg", opts.Forms[1])
+	}
+	expectedBody := "user=bob\navatar=@profile.jpg"
+	if opts.Body != expectedBody {
+		t.Errorf("Body = %q, want %q", opts.Body, expectedBody)
+	}
+}
+
 
 

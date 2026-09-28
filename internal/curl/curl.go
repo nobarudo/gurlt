@@ -32,13 +32,25 @@ func Build(method, reqUrl, headers, body, format string, location, insecure, ver
 	for _, line := range lines {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
-			cmd += fmt.Sprintf(" -H '%s: %s'", strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+			k := strings.TrimSpace(parts[0])
+			v := strings.TrimSpace(parts[1])
+			if format == "multipart" && strings.EqualFold(k, "content-type") {
+				continue
+			}
+			cmd += fmt.Sprintf(" -H '%s: %s'", k, v)
 		}
 	}
 	if body != "" {
 		if format == "json" {
 			singleLine := strings.ReplaceAll(body, "\n", "")
 			cmd += fmt.Sprintf(" -d '%s'", singleLine)
+		} else if format == "multipart" {
+			for _, line := range strings.Split(body, "\n") {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					cmd += fmt.Sprintf(" -F '%s'", line)
+				}
+			}
 		} else {
 			form := url.Values{}
 			for _, line := range strings.Split(body, "\n") {

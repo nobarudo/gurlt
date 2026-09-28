@@ -39,6 +39,8 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 		if !strings.Contains(lowerHeaderStr, "content-type:") {
 			if format == "json" {
 				finalHeaderLines = append(finalHeaderLines, "Content-Type: application/json")
+			} else if format == "multipart" {
+				// multipart の場合は送信時に boundary 付きで自動生成されるためヘッダー指定不要
 			} else {
 				finalHeaderLines = append(finalHeaderLines, "Content-Type: application/x-www-form-urlencoded")
 			}
@@ -59,6 +61,8 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 
 	if format == "json" {
 		b.Placeholder = "{\n  \"key\": \"value\"\n}"
+	} else if format == "multipart" {
+		b.Placeholder = "field=value\nfile=@/path/to/file"
 	} else {
 		b.Placeholder = "key=value"
 	}

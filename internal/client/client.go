@@ -1,14 +1,18 @@
 package client
 
 import (
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -73,10 +77,56 @@ func (d *dumpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func Send(opts RequestOptions) Result {
 	var reqBody io.Reader
 	var history []HistoryEntry
+	var multipartContentType string
 
 	if opts.Body != "" {
 		if opts.Format == "json" {
 			reqBody = strings.NewReader(opts.Body)
+		} else if opts.Format == "multipart" {
+			var b bytes.Buffer
+			w := multipart.NewWriter(&b)
+
+			for _, line := range strings.Split(opts.Body, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				parts := strings.SplitN(line, "=", 2)
+				if len(parts) != 2 {
+					continue
+				}
+				key := strings.TrimSpace(parts[0])
+				val := strings.TrimSpace(parts[1])
+
+				if strings.HasPrefix(val, "@") {
+					filePath := strings.TrimPrefix(val, "@")
+					file, err := os.Open(filePath)
+					if err != nil {
+						return Result{Err: fmt.Errorf("failed to open file %s: %w", filePath, err)}
+					}
+					part, err := w.CreateFormFile(key, filepath.Base(filePath))
+					if err != nil {
+						file.Close()
+						return Result{Err: fmt.Errorf("failed to create form file: %w", err)}
+					}
+					if _, err := io.Copy(part, file); err != nil {
+						file.Close()
+						return Result{Err: fmt.Errorf("failed to copy file content: %w", err)}
+					}
+					file.Close()
+				} else {
+					if err := w.WriteField(key, val); err != nil {
+						return Result{Err: fmt.Errorf("failed to write form field: %w", err)}
+					}
+				}
+			}
+
+			if err := w.Close(); err != nil {
+				return Result{Err: fmt.Errorf("failed to close multipart writer: %w", err)}
+			}
+
+			reqBody = &b
+			multipartContentType = w.FormDataContentType()
 		} else {
 			form := url.Values{}
 			for _, line := range strings.Split(opts.Body, "\n") {
@@ -97,8 +147,18 @@ func Send(opts RequestOptions) Result {
 	for _, line := range strings.Split(opts.Headers, "\n") {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
-			req.Header.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+			k := strings.TrimSpace(parts[0])
+			v := strings.TrimSpace(parts[1])
+			// multipart の場合は自動生成された Content-Type (boundary付き) を優先
+			if opts.Format == "multipart" && strings.EqualFold(k, "content-type") {
+				continue
+			}
+			req.Header.Add(k, v)
 		}
+	}
+
+	if multipartContentType != "" {
+		req.Header.Set("Content-Type", multipartContentType)
 	}
 
 	dialer := &net.Dialer{

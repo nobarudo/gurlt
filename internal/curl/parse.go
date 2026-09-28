@@ -21,6 +21,8 @@ type ParsedOptions struct {
 	Proxy          string
 	MaxTime        float64
 	ConnectTimeout float64
+	IsMultipart    bool
+	Forms          []string
 }
 
 // Parse はcURLコマンドの文字列を安全に分解し、必要な設定だけを抽出します
@@ -116,6 +118,13 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 				}
 				i++
 			}
+		case "-F", "--form":
+			if i+1 < len(args) {
+				opts.Forms = append(opts.Forms, args[i+1])
+				opts.Method = "POST"
+				opts.IsMultipart = true
+				i++
+			}
 		default:
 			// オプションではなく、httpから始まるならURLとして扱う
 			if !strings.HasPrefix(arg, "-") && strings.HasPrefix(arg, "http") {
@@ -123,6 +132,10 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 			}
 			// その他未知のオプション（--compressedなど）はすべて無視！
 		}
+	}
+
+	if opts.IsMultipart && len(opts.Forms) > 0 {
+		opts.Body = strings.Join(opts.Forms, "\n")
 	}
 
 	return opts, nil
