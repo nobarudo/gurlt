@@ -21,11 +21,23 @@ go install github.com/nobarudo/gurlt@latest
 gurlt https://example.com/
 ```
 
-**2. With Flags (-X, -H, -d, -u, -A, -L)**
+**2. With Flags (-X, -H, -d, -F, -u, -A, -L, --json, -m, -k, -x)**
 
 ```bash
-gurlt -X POST -H "Authorization: Bearer token" -d '{"test":123}' https://httpbin.org/post
+# JSON request shorthand (automatically sets method to POST, and adds JSON headers)
+gurlt --json '{"name":"alice","age":30}' https://httpbin.org/post
 
+# Multipart form-data & file upload (supports key=value and key=@filepath)
+gurlt -F "user=alice" -F "avatar=@profile.jpg" https://httpbin.org/post
+
+# Timeout control (maximum transfer time & connection timeout in seconds)
+gurlt -m 10 --connect-timeout 3.5 https://httpbin.org/delay/2
+
+# Insecure SSL connections and Proxy
+gurlt -k -x http://localhost:8080 https://localhost:8443/
+
+# Standard cURL flags
+gurlt -X POST -H "Authorization: Bearer token" -d '{"test":123}' https://httpbin.org/post
 ```
 
 **3.cURL Parse**
@@ -33,7 +45,7 @@ gurlt -X POST -H "Authorization: Bearer token" -d '{"test":123}' https://httpbin
 Paste a raw cURL command (e.g., copied from Chrome DevTools) inside quotes. `gurlt` will automatically parse the necessary data and ignore the noise.
 
 ```bash
-gurlt "curl 'https://api.example.com' -H 'Accept: */*' --compressed --insecure"
+gurlt "curl 'https://api.example.com' -m 10 -H 'Accept: */*' --compressed --insecure"
 
 ```
 
@@ -52,7 +64,8 @@ Press `Ctrl+O` from the main view to open the options modal and configure advanc
 - `-v / --verbose`: Detailed logging
 - `-L / --location`: Follow HTTP redirects
 - `-x`: Specify HTTP/HTTPS proxy URL
-- View current configuration (`--format`, `--log`, and extra CLI arguments)
+- `-m`: Specify transfer timeout in seconds
+- View current configuration (`--format`, `--connect-timeout`, `--log`, and extra CLI arguments)
 
 Changes made in the modal are immediately reflected in the live `💻 cURL:` preview and copied with `Ctrl+A`.
 

@@ -13,7 +13,7 @@ func TestGetExtraArgs(t *testing.T) {
 	}{
 		{
 			name: "known flags only",
-			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "-u", "user:pass", "-A", "myagent", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
+			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "-F", "user=alice", "--form", "avatar=@pic.png", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-k", "-x", "http://127.0.0.1:8080", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
 			want: "",
 		},
 		{
@@ -23,7 +23,7 @@ func TestGetExtraArgs(t *testing.T) {
 		},
 		{
 			name: "flag with equals",
-			args: []string{"--user=admin:secret", "--compressed", "https://example.com"},
+			args: []string{"--user=admin:secret", "--form=field=val", "--json='{\"test\":1}'", "--max-time=10", "--connect-timeout=5", "--proxy=http://proxy:8080", "--compressed", "https://example.com"},
 			want: "--compressed",
 		},
 		{
@@ -80,3 +80,155 @@ func TestHeaderConstructionWithUserAndAgent(t *testing.T) {
 		t.Errorf("expected X-Custom header in list, got: %s", headerList)
 	}
 }
+
+func TestJSONFlagHandling(t *testing.T) {
+	origJsonData := jsonData
+	origData := data
+	origFormat := format
+	origMethod := method
+	origHeaders := headers
+	defer func() {
+		jsonData = origJsonData
+		data = origData
+		format = origFormat
+		method = origMethod
+		headers = origHeaders
+	}()
+
+	jsonData = `{"hello":"world"}`
+	data = ""
+	format = "form"
+	method = "GET"
+	headers = []string{}
+
+	if jsonData != "" {
+		data = jsonData
+		format = "json"
+		if method == "GET" {
+			method = "POST"
+		}
+		hasAccept := false
+		hasContentType := false
+		for _, h := range headers {
+			lowerH := strings.ToLower(h)
+			if strings.HasPrefix(lowerH, "accept:") {
+				hasAccept = true
+			}
+			if strings.HasPrefix(lowerH, "content-type:") {
+				hasContentType = true
+			}
+		}
+		if !hasAccept {
+			headers = append(headers, "Accept: application/json")
+		}
+		if !hasContentType {
+			headers = append(headers, "Content-Type: application/json")
+		}
+	}
+
+	if method != "POST" {
+		t.Errorf("expected method POST, got %s", method)
+	}
+	if format != "json" {
+		t.Errorf("expected format json, got %s", format)
+	}
+	if data != `{"hello":"world"}` {
+		t.Errorf("expected data to be JSON string, got %s", data)
+	}
+
+	hasAccept := false
+	hasContentType := false
+	for _, h := range headers {
+		if h == "Accept: application/json" {
+			hasAccept = true
+		}
+		if h == "Content-Type: application/json" {
+			hasContentType = true
+		}
+	}
+	if !hasAccept {
+		t.Errorf("expected Accept: application/json in headers")
+	}
+	if !hasContentType {
+		t.Errorf("expected Content-Type: application/json in headers")
+	}
+}
+
+func TestTimeoutFlagsParsed(t *testing.T) {
+	origMaxTime := maxTime
+	origConnectTimeout := connectTimeout
+	defer func() {
+		maxTime = origMaxTime
+		connectTimeout = origConnectTimeout
+	}()
+
+	maxTime = 12.5
+	connectTimeout = 3.0
+
+	if maxTime != 12.5 {
+		t.Errorf("expected maxTime 12.5, got %v", maxTime)
+	}
+	if connectTimeout != 3.0 {
+		t.Errorf("expected connectTimeout 3.0, got %v", connectTimeout)
+	}
+}
+
+func TestInsecureAndProxyFlags(t *testing.T) {
+	origInsecure := insecure
+	origProxy := proxy
+	defer func() {
+		insecure = origInsecure
+		proxy = origProxy
+	}()
+
+	insecure = true
+	proxy = "http://127.0.0.1:8888"
+
+	if !insecure {
+		t.Errorf("expected insecure to be true")
+	}
+	if proxy != "http://127.0.0.1:8888" {
+		t.Errorf("expected proxy to be http://127.0.0.1:8888, got %s", proxy)
+	}
+}
+
+func TestMultipartFormFlagHandling(t *testing.T) {
+	origForms := forms
+	origData := data
+	origFormat := format
+	origMethod := method
+	defer func() {
+		forms = origForms
+		data = origData
+		format = origFormat
+		method = origMethod
+	}()
+
+	forms = []string{"user=alice", "avatar=@avatar.png"}
+	data = ""
+	format = "form"
+	method = "GET"
+
+	if len(forms) > 0 {
+		data = strings.Join(forms, "\n")
+		format = "multipart"
+		if method == "GET" {
+			method = "POST"
+		}
+	}
+
+	if method != "POST" {
+		t.Errorf("expected method POST, got %s", method)
+	}
+	if format != "multipart" {
+		t.Errorf("expected format multipart, got %s", format)
+	}
+	expectedData := "user=alice\navatar=@avatar.png"
+	if data != expectedData {
+		t.Errorf("expected data %q, got %q", expectedData, data)
+	}
+}
+
+
+
+

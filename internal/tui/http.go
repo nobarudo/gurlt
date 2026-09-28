@@ -18,9 +18,9 @@ type responseMsg struct {
 
 type clearMsg struct{}
 
-func sendRequest(method, reqUrl, headers, body, format string, location bool, curlCmd string) tea.Cmd {
+func sendRequest(opts client.RequestOptions, curlCmd string) tea.Cmd {
 	return func() tea.Msg {
-		res := client.Send(method, reqUrl, headers, body, format, location)
+		res := client.Send(opts)
 		if res.Err != nil {
 			return responseMsg{err: res.Err}
 		}

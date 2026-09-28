@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -54,6 +55,8 @@ func (m Model) mainView() string {
 	bodyLabel := "Params (key=value):"
 	if m.format == "json" {
 		bodyLabel = "Body (JSON):"
+	} else if m.format == "multipart" {
+		bodyLabel = "Form Data (key=val or key=@file):"
 	}
 	content += renderLabel(bodyLabel, m.focusIndex == 3) + "\n" + m.bodyInput.View() + "\n"
 	content += dividerStyle.Render(strings.Repeat("─", m.terminalWidth-10)) + "\n"
@@ -143,6 +146,24 @@ func (m Model) optionsModalView() string {
 	}
 	b.WriteString(m.proxyInput.View() + "\n\n")
 
+	// 5. -m Timeout
+	timeoutCursor := "  "
+	if m.optionsCursor == 4 {
+		timeoutCursor = "▶ "
+	}
+	timeoutLabel := timeoutCursor + "Timeout (-m, seconds):"
+	if m.optionsCursor == 4 {
+		if m.timeoutInput.Focused() {
+			timeoutLabel += " (Editing... [Enter/Esc] Done)"
+		} else {
+			timeoutLabel += " (Press Space to edit)"
+		}
+		b.WriteString(modalSelectStyle.Render(timeoutLabel) + "\n")
+	} else {
+		b.WriteString(modalItemStyle.Render(timeoutLabel) + "\n")
+	}
+	b.WriteString(m.timeoutInput.View() + "\n\n")
+
 	// Divider
 	b.WriteString(dividerStyle.Render(strings.Repeat("─", 54)) + "\n")
 
@@ -159,18 +180,30 @@ func (m Model) optionsModalView() string {
 	if extraVal == "" {
 		extraVal = "(none)"
 	}
+	timeoutVal := "(none)"
+	if m.maxTime > 0 {
+		timeoutVal = fmt.Sprintf("%ss", strconv.FormatFloat(m.maxTime, 'f', -1, 64))
+	}
+	connTimeoutVal := "(none)"
+	if m.connectTimeout > 0 {
+		connTimeoutVal = fmt.Sprintf("%ss", strconv.FormatFloat(m.connectTimeout, 'f', -1, 64))
+	}
 
 	b.WriteString(modalSectionTitleStyle.Render("Current Configuration:") + "\n")
-	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Data Format (-f): %s", formatVal)) + "\n")
-	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Log File (--log): %s", logVal)) + "\n")
+	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Data Format (-f):    %s", formatVal)) + "\n")
+	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Max Time (-m):       %s", timeoutVal)) + "\n")
+	if m.connectTimeout > 0 {
+		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Connect Timeout:     %s", connTimeoutVal)) + "\n")
+	}
+	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Log File (--log):    %s", logVal)) + "\n")
 	if extraVal != "(none)" {
-		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Extra cURL Args:  %s", extraVal)) + "\n")
+		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Extra cURL Args:     %s", extraVal)) + "\n")
 	}
 	b.WriteString("\n")
 
 	// Help text
-	if m.proxyInput.Focused() {
-		b.WriteString(modalHelpStyle.Render("[Type] Input URL   [Enter/Esc] Done Editing"))
+	if m.proxyInput.Focused() || m.timeoutInput.Focused() {
+		b.WriteString(modalHelpStyle.Render("[Type] Input value   [Enter/Esc] Done Editing"))
 	} else {
 		b.WriteString(modalHelpStyle.Render("[j/k] Move   [Space] Toggle / Edit   [Esc/ctrl+o] Back"))
 	}

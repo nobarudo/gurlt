@@ -14,14 +14,20 @@ import (
 )
 
 var (
-	method    string
-	format    string
-	headers   []string
-	data      string
-	user      string
-	userAgent string
-	location  bool
-	logFile   string
+	method         string
+	format         string
+	headers        []string
+	data           string
+	forms          []string
+	user           string
+	userAgent      string
+	jsonData       string
+	maxTime        float64
+	connectTimeout float64
+	location       bool
+	insecure       bool
+	proxy          string
+	logFile        string
 )
 
 var rootCmd = &cobra.Command{
@@ -59,7 +65,59 @@ var rootCmd = &cobra.Command{
 				if parsedOpts.Location {
 					location = parsedOpts.Location
 				}
+				if parsedOpts.Insecure {
+					insecure = parsedOpts.Insecure
+				}
+				if parsedOpts.Proxy != "" {
+					proxy = parsedOpts.Proxy
+				}
+				if parsedOpts.MaxTime > 0 {
+					maxTime = parsedOpts.MaxTime
+				}
+				if parsedOpts.ConnectTimeout > 0 {
+					connectTimeout = parsedOpts.ConnectTimeout
+				}
 				headers = append(headers, parsedOpts.Headers...)
+			}
+		}
+
+		// --json オプションが指定された場合
+		if jsonData != "" {
+			data = jsonData
+			format = "json"
+			if method == "GET" {
+				method = "POST"
+			}
+			hasAccept := false
+			hasContentType := false
+			for _, h := range headers {
+				lowerH := strings.ToLower(h)
+				if strings.HasPrefix(lowerH, "accept:") {
+					hasAccept = true
+				}
+				if strings.HasPrefix(lowerH, "content-type:") {
+					hasContentType = true
+				}
+			}
+			if !hasAccept {
+				headers = append(headers, "Accept: application/json")
+			}
+			if !hasContentType {
+				headers = append(headers, "Content-Type: application/json")
+			}
+		}
+
+		// -F, --form オプションが指定された場合
+		if len(forms) > 0 {
+			data = strings.Join(forms, "\n")
+			format = "multipart"
+			if method == "GET" {
+				method = "POST"
+			}
+		} else if parsedOpts != nil && parsedOpts.IsMultipart {
+			format = "multipart"
+			if method == "GET" {
+				method = "POST"
 			}
 		}
 
@@ -94,15 +152,21 @@ var rootCmd = &cobra.Command{
 		extraArgs := getExtraArgs(os.Args[1:])
 
 		m := tui.InitialModel(urlInput, method, headerList, data, format, location, logFile, extraArgs)
+		if maxTime > 0 {
+			m.SetMaxTime(maxTime)
+		}
+		if connectTimeout > 0 {
+			m.SetConnectTimeout(connectTimeout)
+		}
+		if insecure {
+			m.SetInsecure(true)
+		}
+		if proxy != "" {
+			m.SetProxy(proxy)
+		}
 		if parsedOpts != nil {
-			if parsedOpts.Insecure {
-				m.SetInsecure(true)
-			}
 			if parsedOpts.Verbose {
 				m.SetVerbose(true)
-			}
-			if parsedOpts.Proxy != "" {
-				m.SetProxy(parsedOpts.Proxy)
 			}
 		}
 
@@ -129,13 +193,19 @@ func getExtraArgs(args []string) string {
 		"-X": true, "--request": true,
 		"-H": true, "--header": true,
 		"-d": true, "--data": true, "--data-raw": true,
-		"-u": true, "--user": true,
-		"-A": true, "--user-agent": true,
-		"-f": true, "--format": true,
-		"--log": true,
+		"-F": true, "--form": true,
+		"--json":            true,
+		"-u":                true, "--user": true,
+		"-A":                true, "--user-agent": true,
+		"-f":                true, "--format": true,
+		"-m":                true, "--max-time": true,
+		"--connect-timeout": true,
+		"-x":                true, "--proxy": true,
+		"--log":             true,
 	}
 	knownBoolFlags := map[string]bool{
 		"-L": true, "--location": true,
+		"-k": true, "--insecure": true,
 	}
 
 	for i := 0; i < len(args); i++ {
@@ -181,15 +251,21 @@ func getExtraArgs(args []string) string {
 
 func init() {
 	// gurlt 独自のフラグ
-	rootCmd.Flags().StringVarP(&format, "format", "f", "form", "Data format (json, form)")
+	rootCmd.Flags().StringVarP(&format, "format", "f", "form", "Data format (json, form, multipart)")
 
 	// curl 互換フラグ
 	rootCmd.Flags().StringVarP(&method, "request", "X", "GET", "Specify request command to use")
 	rootCmd.Flags().StringArrayVarP(&headers, "header", "H", []string{}, "Pass custom header(s) to server")
 	rootCmd.Flags().StringVarP(&data, "data", "d", "", "HTTP POST data")
 	rootCmd.Flags().StringVar(&data, "data-raw", "", "HTTP POST data (same as --data)")
+	rootCmd.Flags().StringArrayVarP(&forms, "form", "F", []string{}, "Specify multipart MIME data")
+	rootCmd.Flags().StringVar(&jsonData, "json", "", "HTTP POST data with JSON content-type and accept headers")
 	rootCmd.Flags().StringVarP(&user, "user", "u", "", "Server user and password")
 	rootCmd.Flags().StringVarP(&userAgent, "user-agent", "A", "", "Send User-Agent <name> to server")
+	rootCmd.Flags().Float64VarP(&maxTime, "max-time", "m", 0, "Maximum time allowed for the transfer (in seconds)")
+	rootCmd.Flags().Float64Var(&connectTimeout, "connect-timeout", 0, "Maximum time allowed for connection (in seconds)")
+	rootCmd.Flags().BoolVarP(&insecure, "insecure", "k", false, "Allow insecure server connections when using SSL")
+	rootCmd.Flags().StringVarP(&proxy, "proxy", "x", "", "[protocol://]host[:port] Use this proxy")
 	rootCmd.Flags().BoolVarP(&location, "location", "L", false, "Follow redirects")
 	rootCmd.Flags().StringVar(&logFile, "log", "", "Append raw request and response to a file (e.g., --log audit.log)")
 }
