@@ -28,6 +28,7 @@ var (
 	insecure       bool
 	proxy          string
 	logFile        string
+	writeOut       string
 )
 
 var rootCmd = &cobra.Command{
@@ -201,6 +202,7 @@ func getExtraArgs(args []string) string {
 		"-m":                true, "--max-time": true,
 		"--connect-timeout": true,
 		"-x":                true, "--proxy": true,
+		"-w":                true, "--write-out": true,
 		"--log":             true,
 	}
 	knownBoolFlags := map[string]bool{
@@ -267,5 +269,6 @@ func init() {
 	rootCmd.Flags().BoolVarP(&insecure, "insecure", "k", false, "Allow insecure server connections when using SSL")
 	rootCmd.Flags().StringVarP(&proxy, "proxy", "x", "", "[protocol://]host[:port] Use this proxy")
 	rootCmd.Flags().BoolVarP(&location, "location", "L", false, "Follow redirects")
+	rootCmd.Flags().StringVarP(&writeOut, "write-out", "w", "", "Output format after completion (curl compatible)")
 	rootCmd.Flags().StringVar(&logFile, "log", "", "Append raw request and response to a file (e.g., --log audit.log)")
 }

@@ -19,4 +19,11 @@ var (
 	modalItemStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#D4D4D4"))
 	modalSelectStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#CE9178")).Bold(true)
 	modalHelpStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#75715E")).MarginTop(1)
+
+	timingDNSStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#4EC9B0"))
+	timingTCPStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#569CD6"))
+	timingTLSStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#C586C0"))
+	timingTTFBStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#DCDCAA"))
+	timingTransferStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#B5CEA8"))
+	timingTotalStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#E0E0E0")).Bold(true)
 )

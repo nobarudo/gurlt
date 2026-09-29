@@ -57,7 +57,18 @@ Automatically save request and response dumps to a file.
 gurlt --log audit.log https://example.com
 ```
 
-**5. Options Modal (`Ctrl+O`)**
+**5. Network Latency Breakdown (cURL -w equivalent)**
+
+When a request completes, `gurlt` automatically measures and displays a visual latency timeline bar and phase breakdown in the main view:
+- **DNS Lookup**: Resolution time (`time_namelookup`)
+- **TCP Connect**: Connection establishment time (`time_connect`)
+- **TLS Handshake**: SSL negotiation time (`time_appconnect`)
+- **Server Processing / TTFB**: Time from request send until first byte received (`time_starttransfer`)
+- **Content Transfer**: Time spent reading response body (`time_total`)
+
+Detailed `curl -w` metrics are also included in the Raw View (`Ctrl+R`) and saved in `--log` files.
+
+**6. Options Modal (`Ctrl+O`)**
 
 Press `Ctrl+O` from the main view to open the options modal and configure advanced cURL settings:
 - `-k / --insecure`: Ignore SSL certificate verification errors
@@ -65,7 +76,7 @@ Press `Ctrl+O` from the main view to open the options modal and configure advanc
 - `-L / --location`: Follow HTTP redirects
 - `-x`: Specify HTTP/HTTPS proxy URL
 - `-m`: Specify transfer timeout in seconds
-- View current configuration (`--format`, `--connect-timeout`, `--log`, and extra CLI arguments)
+- View current configuration (`--format`, `--connect-timeout`, `--log`, latency metrics, and extra CLI arguments)
 
 Changes made in the modal are immediately reflected in the live `💻 cURL:` preview and copied with `Ctrl+A`.
 

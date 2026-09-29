@@ -41,6 +41,9 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 		contentWidth = 1
 	}
 	fixedVerticalLines := 15
+	if m.timing.Total > 0 {
+		fixedVerticalLines = 18
+	}
 
 	// 入力欄に使える余りスペースを計算し、2つのテキストエリア（Headers/Params）で割る
 	availableHeight := m.terminalHeight - fixedVerticalLines
@@ -92,9 +95,20 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 	m.isLoading = false
 	m.responseStatus = msg.status
+	m.timing = msg.timing
 	if msg.err == nil {
 		m.normalContent, m.rawContent = msg.body, msg.rawContent
 		m.history = msg.history
+
+		if m.timing.Total > 0 && m.terminalHeight > 0 {
+			availableHeight := m.terminalHeight - 18
+			textAreaHeight := availableHeight / 2
+			if textAreaHeight < 5 {
+				textAreaHeight = 5
+			}
+			m.headerInput.SetHeight(textAreaHeight)
+			m.bodyInput.SetHeight(textAreaHeight)
+		}
 
 		// ログ保存
 		if m.logFile != "" {

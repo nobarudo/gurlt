@@ -44,6 +44,7 @@ type Model struct {
 	connectTimeout   float64
 	timeoutInput     textinput.Model
 	optionsCursor    int
+	timing           client.TimingInfo
 }
 
 // BuildCurlCmd は現在の設定値（URL, Header, Body, 各種オプション）から完全なcURLコマンド文字列を生成します

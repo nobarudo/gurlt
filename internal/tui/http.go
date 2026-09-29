@@ -14,6 +14,7 @@ type responseMsg struct {
 	rawContent string
 	err        error
 	history    []client.HistoryEntry
+	timing     client.TimingInfo
 }
 
 type clearMsg struct{}
@@ -22,7 +23,7 @@ func sendRequest(opts client.RequestOptions, curlCmd string) tea.Cmd {
 	return func() tea.Msg {
 		res := client.Send(opts)
 		if res.Err != nil {
-			return responseMsg{err: res.Err}
+			return responseMsg{err: res.Err, timing: res.Timing}
 		}
 
 		rawStr := fmt.Sprintf("=== cURL ===\n%s\n\n%s", curlCmd, res.FullDump)
@@ -32,6 +33,7 @@ func sendRequest(opts client.RequestOptions, curlCmd string) tea.Cmd {
 			body:       res.Body,
 			rawContent: rawStr,
 			history:    res.History,
+			timing:     res.Timing,
 		}
 	}
 }

@@ -193,5 +193,18 @@ func TestParseWithMultipart(t *testing.T) {
 	}
 }
 
+func TestParseWithWriteOut(t *testing.T) {
+	cmdStr := "curl 'https://example.com/api' -w '%{time_total}'"
+	opts, err := Parse(cmdStr)
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+
+	if opts.URL != "https://example.com/api" {
+		t.Errorf("URL = %v, want https://example.com/api", opts.URL)
+	}
+}
+
+
 
 

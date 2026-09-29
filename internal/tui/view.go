@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/nobarudo/gurlt/internal/client"
 )
 
 func (m Model) View() string {
@@ -76,6 +78,10 @@ func (m Model) mainView() string {
 		content += errorStyle.Render(fmt.Sprintf("⚠️ Status: %s", m.responseStatus)) + "\n"
 	} else {
 		content += "\n"
+	}
+
+	if m.timing.Total > 0 {
+		content += m.renderTimingView() + "\n"
 	}
 
 	content += dividerStyle.Render(strings.Repeat("─", m.terminalWidth-10)) + "\n"
@@ -199,6 +205,9 @@ func (m Model) optionsModalView() string {
 	if extraVal != "(none)" {
 		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Extra cURL Args:     %s", extraVal)) + "\n")
 	}
+	if m.timing.Total > 0 {
+		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Latency (Last):      %s (TTFB: %s)", client.FormatDuration(m.timing.Total), client.FormatDuration(m.timing.ServerProcessing))) + "\n")
+	}
 	b.WriteString("\n")
 
 	// Help text
@@ -220,5 +229,86 @@ func (m Model) optionsModalView() string {
 	}
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m Model) renderTimingView() string {
+	if m.timing.Total <= 0 {
+		return ""
+	}
+
+	barWidth := m.terminalWidth - 30
+	if barWidth > 40 {
+		barWidth = 40
+	}
+	if barWidth < 15 {
+		barWidth = 15
+	}
+
+	dns := m.timing.DNSLookup
+	tcp := m.timing.TCPConnect
+	tls := m.timing.TLSHandshake
+	ttfb := m.timing.ServerProcessing
+	transfer := m.timing.ContentTransfer
+	total := m.timing.Total
+
+	calcWidth := func(d time.Duration) int {
+		if d <= 0 || total <= 0 {
+			return 0
+		}
+		w := int(float64(d) / float64(total) * float64(barWidth))
+		if w == 0 && d > 0 {
+			w = 1
+		}
+		return w
+	}
+
+	wDNS := calcWidth(dns)
+	wTCP := calcWidth(tcp)
+	wTLS := calcWidth(tls)
+	wTTFB := calcWidth(ttfb)
+	wTransfer := calcWidth(transfer)
+
+	sum := wDNS + wTCP + wTLS + wTTFB + wTransfer
+	if sum > barWidth {
+		diff := sum - barWidth
+		if wTTFB > diff {
+			wTTFB -= diff
+		} else if wTransfer > diff {
+			wTransfer -= diff
+		}
+	} else if sum < barWidth {
+		wTTFB += (barWidth - sum)
+	}
+
+	bar := "[" +
+		timingDNSStyle.Render(strings.Repeat("█", wDNS)) +
+		timingTCPStyle.Render(strings.Repeat("█", wTCP)) +
+		timingTLSStyle.Render(strings.Repeat("█", wTLS)) +
+		timingTTFBStyle.Render(strings.Repeat("█", wTTFB)) +
+		timingTransferStyle.Render(strings.Repeat("█", wTransfer)) +
+		"]"
+
+	var legendParts []string
+	if dns > 0 {
+		legendParts = append(legendParts, timingDNSStyle.Render(fmt.Sprintf("DNS: %s", client.FormatDuration(dns))))
+	}
+	if tcp > 0 {
+		legendParts = append(legendParts, timingTCPStyle.Render(fmt.Sprintf("TCP: %s", client.FormatDuration(tcp))))
+	}
+	if tls > 0 {
+		legendParts = append(legendParts, timingTLSStyle.Render(fmt.Sprintf("TLS: %s", client.FormatDuration(tls))))
+	}
+	if ttfb > 0 {
+		legendParts = append(legendParts, timingTTFBStyle.Render(fmt.Sprintf("TTFB: %s", client.FormatDuration(ttfb))))
+	}
+	if transfer > 0 {
+		legendParts = append(legendParts, timingTransferStyle.Render(fmt.Sprintf("Transfer: %s", client.FormatDuration(transfer))))
+	}
+
+	legend := strings.Join(legendParts, " │ ")
+
+	title := timingTotalStyle.Render(fmt.Sprintf("⏱️  Latency: %s", client.FormatDuration(total)))
+
+	return fmt.Sprintf("%s  %s\n%s", title, bar, legend)
 }
 

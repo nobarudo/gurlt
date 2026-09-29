@@ -125,6 +125,10 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 				opts.IsMultipart = true
 				i++
 			}
+		case "-w", "--write-out":
+			if i+1 < len(args) {
+				i++
+			}
 		default:
 			// オプションではなく、httpから始まるならURLとして扱う
 			if !strings.HasPrefix(arg, "-") && strings.HasPrefix(arg, "http") {

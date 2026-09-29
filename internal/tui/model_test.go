@@ -3,8 +3,10 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/nobarudo/gurlt/internal/client"
 )
 
 func TestBuildCurlCmd(t *testing.T) {
@@ -184,4 +186,51 @@ func TestInitialModelJSONPrettify(t *testing.T) {
 		t.Errorf("expected raw invalid JSON body, got: %s", m2.bodyInput.Value())
 	}
 }
+
+func TestLatencyBreakdownRendering(t *testing.T) {
+	m := InitialModel("https://api.example.com", "GET", "", "", "form", false, "", "")
+	m.terminalWidth = 80
+	m.terminalHeight = 24
+	m.ready = true
+
+	timing := client.TimingInfo{
+		DNSLookup:        15 * time.Millisecond,
+		TCPConnect:       25 * time.Millisecond,
+		TLSHandshake:     35 * time.Millisecond,
+		ServerProcessing: 80 * time.Millisecond,
+		ContentTransfer:  5 * time.Millisecond,
+		Total:            160 * time.Millisecond,
+	}
+
+	res, _ := m.Update(responseMsg{
+		status:     "200 OK",
+		body:       `{"ok":true}`,
+		rawContent: "raw data",
+		timing:     timing,
+	})
+	m = res.(Model)
+
+	if m.timing.Total != 160*time.Millisecond {
+		t.Fatalf("expected timing total 160ms, got %v", m.timing.Total)
+	}
+
+	viewStr := m.View()
+	if !strings.Contains(viewStr, "Latency:") {
+		t.Errorf("expected View() to contain 'Latency:', got:\n%s", viewStr)
+	}
+	if !strings.Contains(viewStr, "160ms") {
+		t.Errorf("expected View() to contain '160ms', got:\n%s", viewStr)
+	}
+	if !strings.Contains(viewStr, "TTFB:") {
+		t.Errorf("expected View() to contain 'TTFB:', got:\n%s", viewStr)
+	}
+
+	// Modal check
+	m.showOptionsModal = true
+	modalStr := m.View()
+	if !strings.Contains(modalStr, "Latency (Last):") {
+		t.Errorf("expected modal to contain 'Latency (Last):', got:\n%s", modalStr)
+	}
+}
+
 
