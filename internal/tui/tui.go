@@ -96,6 +96,11 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 	tInput.Prompt = "  Seconds: "
 	tInput.CharLimit = 16
 
+	srcInput := textinput.New()
+	srcInput.Placeholder = "Search query..."
+	srcInput.Prompt = "/ "
+	srcInput.CharLimit = 128
+
 	return Model{
 		methodInput:  m,
 		urlInput:     u,
@@ -104,6 +109,7 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 		saveInput:    sInput,
 		proxyInput:   pInput,
 		timeoutInput: tInput,
+		searchInput:  srcInput,
 		focusIndex:   1,
 		format:       format,
 		location:     location,

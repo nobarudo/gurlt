@@ -109,6 +109,10 @@ Changes made in the modal are immediately reflected in the live `💻 cURL:` pre
 
 | Key | Action |
 | --- | --- |
+| `/` | Incremental search across raw response & dump |
+| `Enter` / `n` | Jump to next search match |
+| `Shift+Tab` / `N` | Jump to previous search match |
+| `Esc` | Finish search query / Clear highlight |
 | `Ctrl+A` / `C` | Copy Raw Dump |
 | `S` | Save Raw Dump to file |
 | `Ctrl+R` | Back to Main View |

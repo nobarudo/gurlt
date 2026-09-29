@@ -33,8 +33,20 @@ func (m Model) rawView() string {
 	content += responseBoxStyle.Render(m.responseView.View()) + "\n\n"
 	if m.isSaving {
 		content += m.saveInput.View() + "   [Enter] Confirm   [Esc] Cancel"
+	} else if m.isSearching {
+		matchInfo := "[0/0]"
+		if len(m.searchMatches) > 0 {
+			matchInfo = fmt.Sprintf("[%d/%d]", m.searchMatchIndex+1, len(m.searchMatches))
+		}
+		content += m.searchInput.View() + " " + searchCountStyle.Render(matchInfo) + "   [Enter] Next   [Shift+Tab] Prev   [Esc] Done"
+	} else if m.searchQuery != "" {
+		matchInfo := "[0/0]"
+		if len(m.searchMatches) > 0 {
+			matchInfo = fmt.Sprintf("[%d/%d]", m.searchMatchIndex+1, len(m.searchMatches))
+		}
+		content += searchCountStyle.Render(matchInfo) + " " + infoStyle.Render("[n] Next   [N] Prev   [/] Edit   [Esc] Clear   [c] Copy   [ctrl+r] Back") + m.footerMsg + "\n"
 	} else {
-		content += infoStyle.Render("[c/ctrl+a] Copy Raw   [s] Save to File   [ctrl+r] Back") + m.footerMsg + "\n"
+		content += infoStyle.Render("[/] Search   [c/ctrl+a] Copy Raw   [s] Save to File   [ctrl+r] Back") + m.footerMsg + "\n"
 	}
 	return appStyle.Render(content)
 }

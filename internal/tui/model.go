@@ -45,6 +45,11 @@ type Model struct {
 	timeoutInput     textinput.Model
 	optionsCursor    int
 	timing           client.TimingInfo
+	searchInput      textinput.Model
+	isSearching      bool
+	searchQuery      string
+	searchMatches    []int
+	searchMatchIndex int
 }
 
 // BuildCurlCmd は現在の設定値（URL, Header, Body, 各種オプション）から完全なcURLコマンド文字列を生成します

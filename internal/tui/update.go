@@ -126,12 +126,11 @@ func (m Model) handleResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.showRawView {
-		m.responseView.SetContent(m.rawContent)
+		m.updateSearch(false)
 	} else {
-		m.responseView.SetContent(m.normalContent)
+		wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
+		m.responseView.SetContent(wrappedRaw)
 	}
-	wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
-	m.responseView.SetContent(wrappedRaw)
 	m.responseView.GotoTop()
 
 	return m, nil
@@ -168,14 +167,61 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 2. オプション設定モーダル中のキーボード操作
+	// 2. 検索モード中のキーボード操作
+	if m.isSearching {
+		var cmd tea.Cmd
+		switch msg.String() {
+		case "esc":
+			m.isSearching = false
+			m.searchInput.Blur()
+			return m, nil
+		case "ctrl+c":
+			m.isSearching = false
+			m.searchInput.Blur()
+			m.searchQuery = ""
+			m.searchInput.SetValue("")
+			m.updateSearch(false)
+			return m, nil
+		case "enter", "down":
+			if len(m.searchMatches) > 0 {
+				m.searchMatchIndex++
+				m.updateSearch(true)
+			}
+			return m, nil
+		case "shift+tab", "up":
+			if len(m.searchMatches) > 0 {
+				m.searchMatchIndex--
+				m.updateSearch(true)
+			}
+			return m, nil
+		default:
+			prevVal := m.searchInput.Value()
+			m.searchInput, cmd = m.searchInput.Update(msg)
+			if m.searchInput.Value() != prevVal {
+				m.searchQuery = m.searchInput.Value()
+				m.searchMatchIndex = 0
+				m.updateSearch(true)
+			}
+			return m, cmd
+		}
+	}
+
+	// 3. オプション設定モーダル中のキーボード操作
 	if m.showOptionsModal {
 		return m.handleOptionsModalKeyMsg(msg)
 	}
 
-	// 3. グローバルショートカットの処理
+	// 4. グローバルショートカットの処理
 	switch msg.String() {
-	case "ctrl+c", "esc":
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		if m.showRawView && m.searchQuery != "" {
+			m.searchQuery = ""
+			m.searchInput.SetValue("")
+			m.updateSearch(false)
+			return m, nil
+		}
 		return m, tea.Quit
 	case "ctrl+o":
 		m.showOptionsModal = true
@@ -210,6 +256,24 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, updateFocus(&m)
 		}
 		return m, nil
+	case "/":
+		if m.showRawView {
+			m.isSearching = true
+			m.searchInput.Focus()
+			return m, textinput.Blink
+		}
+	case "n":
+		if m.showRawView && m.searchQuery != "" && len(m.searchMatches) > 0 {
+			m.searchMatchIndex++
+			m.updateSearch(true)
+			return m, nil
+		}
+	case "N":
+		if m.showRawView && m.searchQuery != "" && len(m.searchMatches) > 0 {
+			m.searchMatchIndex--
+			m.updateSearch(true)
+			return m, nil
+		}
 	case "c":
 		if m.showRawView && m.rawContent != "" {
 			clipboard.WriteAll(m.rawContent)
@@ -242,9 +306,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showRawView = !m.showRawView
 		m.footerMsg = ""
 		m.isSaving = false
+		m.isSearching = false
 		if m.showRawView {
-			wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
-			m.responseView.SetContent(wrappedRaw)
+			m.updateSearch(false)
 		}
 		m.responseView.GotoTop()
 		return m, nil

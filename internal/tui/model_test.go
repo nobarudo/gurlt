@@ -233,4 +233,88 @@ func TestLatencyBreakdownRendering(t *testing.T) {
 	}
 }
 
+func TestRawViewSearch(t *testing.T) {
+	m := InitialModel("https://api.example.com", "GET", "", "", "form", false, "", "")
+	m.terminalWidth = 80
+	m.terminalHeight = 24
+	m.ready = true
+
+	// レスポンス受信
+	res, _ := m.Update(responseMsg{
+		status:     "200 OK",
+		body:       "Hello World\nSecond line with Hello\nThird line",
+		rawContent: "Hello World\nSecond line with Hello\nThird line",
+	})
+	m = res.(Model)
+
+	// Ctrl+R で Raw View に入る
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = res.(Model)
+	if !m.showRawView {
+		t.Fatalf("expected showRawView to be true")
+	}
+
+	// '/' を押して検索モードに入る
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = res.(Model)
+	if !m.isSearching {
+		t.Fatalf("expected isSearching to be true")
+	}
+
+	// "hello" と入力
+	for _, ch := range "hello" {
+		res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		m = res.(Model)
+	}
+
+	if m.searchQuery != "hello" {
+		t.Errorf("expected searchQuery 'hello', got %q", m.searchQuery)
+	}
+	if len(m.searchMatches) != 2 {
+		t.Fatalf("expected 2 search matches, got %d", len(m.searchMatches))
+	}
+	if m.searchMatchIndex != 0 {
+		t.Errorf("expected searchMatchIndex 0, got %d", m.searchMatchIndex)
+	}
+
+	// Enter で次のマッチへ
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = res.(Model)
+	if m.searchMatchIndex != 1 {
+		t.Errorf("expected searchMatchIndex 1 after Enter, got %d", m.searchMatchIndex)
+	}
+
+	// Esc で検索入力モードを終了（検索自体はアクティブ）
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = res.(Model)
+	if m.isSearching {
+		t.Errorf("expected isSearching to be false after Esc")
+	}
+	if m.searchQuery != "hello" {
+		t.Errorf("expected searchQuery 'hello' to persist, got %q", m.searchQuery)
+	}
+
+	// 'n' で次のマッチへ（ループして 0 に戻る）
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m = res.(Model)
+	if m.searchMatchIndex != 0 {
+		t.Errorf("expected searchMatchIndex 0 after wrapping, got %d", m.searchMatchIndex)
+	}
+
+	// 'N' で前のマッチへ（1 に戻る）
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
+	m = res.(Model)
+	if m.searchMatchIndex != 1 {
+		t.Errorf("expected searchMatchIndex 1 after 'N', got %d", m.searchMatchIndex)
+	}
+
+	// Esc で検索クリア
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = res.(Model)
+	if m.searchQuery != "" {
+		t.Errorf("expected searchQuery to be cleared after Esc, got %q", m.searchQuery)
+	}
+}
+
+
 

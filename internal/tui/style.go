@@ -26,4 +26,8 @@ var (
 	timingTTFBStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#DCDCAA"))
 	timingTransferStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#B5CEA8"))
 	timingTotalStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#E0E0E0")).Bold(true)
+
+	searchHighlightStyle        = lipgloss.NewStyle().Background(lipgloss.Color("#CE9178")).Foreground(lipgloss.Color("#1E1E1E")).Bold(true)
+	searchCurrentHighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color("#4EC9B0")).Foreground(lipgloss.Color("#1E1E1E")).Bold(true)
+	searchCountStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("#DCDCAA")).Bold(true)
 )
