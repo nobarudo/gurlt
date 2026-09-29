@@ -29,6 +29,7 @@ var (
 	proxy          string
 	logFile        string
 	writeOut       string
+	jqQuery        string
 )
 
 var rootCmd = &cobra.Command{
@@ -170,6 +171,9 @@ var rootCmd = &cobra.Command{
 				m.SetVerbose(true)
 			}
 		}
+		if jqQuery != "" {
+			m.SetJSONPathQuery(jqQuery)
+		}
 
 		p := tea.NewProgram(m, tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
@@ -203,6 +207,7 @@ func getExtraArgs(args []string) string {
 		"--connect-timeout": true,
 		"-x":                true, "--proxy": true,
 		"-w":                true, "--write-out": true,
+		"-q":                true, "--query": true, "--jq": true,
 		"--log":             true,
 	}
 	knownBoolFlags := map[string]bool{
@@ -270,5 +275,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&proxy, "proxy", "x", "", "[protocol://]host[:port] Use this proxy")
 	rootCmd.Flags().BoolVarP(&location, "location", "L", false, "Follow redirects")
 	rootCmd.Flags().StringVarP(&writeOut, "write-out", "w", "", "Output format after completion (curl compatible)")
+	rootCmd.Flags().StringVarP(&jqQuery, "query", "q", "", "Filter JSON response using JSON path (e.g. .data.users[0])")
+	rootCmd.Flags().StringVar(&jqQuery, "jq", "", "Filter JSON response using JSON path (same as -q)")
 	rootCmd.Flags().StringVar(&logFile, "log", "", "Append raw request and response to a file (e.g., --log audit.log)")
 }

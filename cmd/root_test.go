@@ -13,7 +13,7 @@ func TestGetExtraArgs(t *testing.T) {
 	}{
 		{
 			name: "known flags only",
-			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "-F", "user=alice", "--form", "avatar=@pic.png", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-k", "-x", "http://127.0.0.1:8080", "-w", "%{time_total}", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
+			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "-F", "user=alice", "--form", "avatar=@pic.png", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-k", "-x", "http://127.0.0.1:8080", "-w", "%{time_total}", "-q", ".data.users[0]", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
 			want: "",
 		},
 		{
@@ -23,7 +23,7 @@ func TestGetExtraArgs(t *testing.T) {
 		},
 		{
 			name: "flag with equals",
-			args: []string{"--user=admin:secret", "--form=field=val", "--write-out=%{time_total}", "--json='{\"test\":1}'", "--max-time=10", "--connect-timeout=5", "--proxy=http://proxy:8080", "--compressed", "https://example.com"},
+			args: []string{"--user=admin:secret", "--form=field=val", "--write-out=%{time_total}", "--jq=.name", "--json='{\"test\":1}'", "--max-time=10", "--connect-timeout=5", "--proxy=http://proxy:8080", "--compressed", "https://example.com"},
 			want: "--compressed",
 		},
 		{

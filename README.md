@@ -21,9 +21,12 @@ go install github.com/nobarudo/gurlt@latest
 gurlt https://example.com/
 ```
 
-**2. With Flags (-X, -H, -d, -F, -u, -A, -L, --json, -m, -k, -x)**
+**2. With Flags (-X, -H, -d, -F, -u, -A, -L, --json, -m, -k, -x, -q/--jq)**
 
 ```bash
+# JSON response path filtering (jq / gjson equivalent)
+gurlt -q ".users[0].name" https://api.example.com/users
+
 # JSON request shorthand (automatically sets method to POST, and adds JSON headers)
 gurlt --json '{"name":"alice","age":30}' https://httpbin.org/post
 
@@ -80,6 +83,14 @@ Press `Ctrl+O` from the main view to open the options modal and configure advanc
 
 Changes made in the modal are immediately reflected in the live `💻 cURL:` preview and copied with `Ctrl+A`.
 
+**7. JSON Path Filtering (jq / gjson equivalent)**
+
+Filter and drill down into JSON responses via CLI or interactively in Raw View:
+- **CLI Flags**: `-q, --query <path>` or `--jq <path>` (e.g. `-q ".data.users[*].name"`)
+- **Interactive in Raw View (`Ctrl+R`)**: Press `p` or `f` to enter a JSON Path query.
+- Supports dot notation (`.user.name`), array indexing (`[0]`), negative indexing (`[-1]`), array wildcards (`[*]`), bracketed keys (`['content-type']`), and length helper (`.items.length`).
+- Filtered results can be searched (`/`), copied (`c` or `Ctrl+A`), or saved to disk (`s`).
+
 ## ⌨️ Keybindings
 
 ### Main View
@@ -112,9 +123,10 @@ Changes made in the modal are immediately reflected in the live `💻 cURL:` pre
 | `/` | Incremental search across raw response & dump |
 | `Enter` / `n` | Jump to next search match |
 | `Shift+Tab` / `N` | Jump to previous search match |
-| `Esc` | Finish search query / Clear highlight |
-| `Ctrl+A` / `C` | Copy Raw Dump |
-| `S` | Save Raw Dump to file |
+| `p` / `f` | Filter JSON response body with JSONPath (e.g. `.items[0].id`, `[*]`, `.length`) |
+| `Esc` | Close input bar / Clear search highlight & filter |
+| `Ctrl+A` / `c` | Copy Raw Dump (or filtered JSON if filter active) |
+| `s` | Save Raw Dump (or filtered JSON) to file |
 | `Ctrl+R` | Back to Main View |
 
 ## 📄 License

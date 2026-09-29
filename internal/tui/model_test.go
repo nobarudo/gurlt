@@ -316,5 +316,77 @@ func TestRawViewSearch(t *testing.T) {
 	}
 }
 
+func TestRawViewJSONFiltering(t *testing.T) {
+	m := InitialModel("https://api.example.com", "GET", "", "", "form", false, "", "")
+	m.terminalWidth = 80
+	m.terminalHeight = 24
+	m.ready = true
+
+	jsonBody := `{"users":[{"name":"Alice","role":"admin"},{"name":"Bob","role":"user"}]}`
+	rawDump := "=== Response ===\n" + jsonBody
+
+	res, _ := m.Update(responseMsg{
+		status:     "200 OK",
+		body:       jsonBody,
+		rawContent: rawDump,
+	})
+	m = res.(Model)
+
+	// Ctrl+R で Raw View に入る
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = res.(Model)
+
+	// 'p' で JSON フィルタモードに入る
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = res.(Model)
+	if !m.isFiltering {
+		t.Fatalf("expected isFiltering to be true")
+	}
+
+	// ".users[0].name" を入力
+	for _, ch := range ".users[0].name" {
+		res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		m = res.(Model)
+	}
+
+	// Enter でフィルタ適用
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = res.(Model)
+	if m.isFiltering {
+		t.Fatalf("expected isFiltering to be false after Enter")
+	}
+	if m.jsonPathQuery != ".users[0].name" {
+		t.Errorf("expected jsonPathQuery '.users[0].name', got %q", m.jsonPathQuery)
+	}
+	if m.filteredContent != "Alice" {
+		t.Errorf("expected filteredContent 'Alice', got %q", m.filteredContent)
+	}
+
+	// activeContent が "Alice" になっていること
+	if m.activeContent() != "Alice" {
+		t.Errorf("expected activeContent 'Alice', got %q", m.activeContent())
+	}
+
+	// View() に [Filter: .users[0].name] が表示されること
+	viewStr := m.View()
+	if !strings.Contains(viewStr, "[Filter: .users[0].name]") {
+		t.Errorf("expected View() to contain filter tag, got:\n%s", viewStr)
+	}
+
+	// Esc でフィルタクリア
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = res.(Model)
+	if m.jsonPathQuery != "" {
+		t.Errorf("expected jsonPathQuery to be cleared, got %q", m.jsonPathQuery)
+	}
+	if m.filteredContent != "" {
+		t.Errorf("expected filteredContent to be cleared, got %q", m.filteredContent)
+	}
+	if m.activeContent() != rawDump {
+		t.Errorf("expected activeContent to be rawDump after clearing filter")
+	}
+}
+
+
 
 

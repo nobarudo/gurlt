@@ -125,7 +125,9 @@ func (m Model) handleResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.normalContent = errorStyle.Render(fmt.Sprintf("Error: %v", msg.err))
 	}
 
-	if m.showRawView {
+	if m.jsonPathQuery != "" && msg.err == nil {
+		_ = m.applyJSONFilter()
+	} else if m.showRawView {
 		m.updateSearch(false)
 	} else {
 		wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
@@ -152,7 +154,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			filename := strings.TrimSpace(m.saveInput.Value())
 			if filename != "" {
-				os.WriteFile(filename, []byte(m.rawContent), 0644)
+				os.WriteFile(filename, []byte(m.activeContent()), 0644)
 				m.footerMsg = successStyle.Render(" [✅ Saved!]")
 				m.isSaving = false
 				m.saveInput.Blur()
@@ -206,6 +208,35 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// 3. JSON フィルタモード中のキーボード操作
+	if m.isFiltering {
+		var cmd tea.Cmd
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.isFiltering = false
+			m.filterInput.Blur()
+			m.filterInput.SetValue(m.jsonPathQuery)
+			return m, nil
+		case "enter":
+			m.isFiltering = false
+			m.filterInput.Blur()
+			m.jsonPathQuery = strings.TrimSpace(m.filterInput.Value())
+			if err := m.applyJSONFilter(); err != nil {
+				m.footerMsg = errorStyle.Render(fmt.Sprintf(" [❌ %v]", err))
+				return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+			}
+			if m.jsonPathQuery != "" {
+				m.footerMsg = successStyle.Render(" [🔍 Filtered!]")
+			} else {
+				m.footerMsg = infoStyle.Render(" [Filter Cleared]")
+			}
+			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+		default:
+			m.filterInput, cmd = m.filterInput.Update(msg)
+			return m, cmd
+		}
+	}
+
 	// 3. オプション設定モーダル中のキーボード操作
 	if m.showOptionsModal {
 		return m.handleOptionsModalKeyMsg(msg)
@@ -216,11 +247,20 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "esc":
-		if m.showRawView && m.searchQuery != "" {
-			m.searchQuery = ""
-			m.searchInput.SetValue("")
-			m.updateSearch(false)
-			return m, nil
+		if m.showRawView {
+			if m.searchQuery != "" {
+				m.searchQuery = ""
+				m.searchInput.SetValue("")
+				m.updateSearch(false)
+				return m, nil
+			}
+			if m.jsonPathQuery != "" {
+				m.jsonPathQuery = ""
+				m.filterInput.SetValue("")
+				m.applyJSONFilter()
+				m.footerMsg = infoStyle.Render(" [Filter Cleared]")
+				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+			}
 		}
 		return m, tea.Quit
 	case "ctrl+o":
@@ -262,6 +302,12 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchInput.Focus()
 			return m, textinput.Blink
 		}
+	case "p", "f":
+		if m.showRawView {
+			m.isFiltering = true
+			m.filterInput.Focus()
+			return m, textinput.Blink
+		}
 	case "n":
 		if m.showRawView && m.searchQuery != "" && len(m.searchMatches) > 0 {
 			m.searchMatchIndex++
@@ -275,8 +321,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "c":
-		if m.showRawView && m.rawContent != "" {
-			clipboard.WriteAll(m.rawContent)
+		if m.showRawView && m.activeContent() != "" {
+			clipboard.WriteAll(m.activeContent())
 			m.footerMsg = successStyle.Render(" [✅ Copied!]")
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 		}
@@ -338,7 +384,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.footerMsg = successStyle.Render(" [✅ Copied!]")
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 		} else {
-			clipboard.WriteAll(m.rawContent)
+			clipboard.WriteAll(m.activeContent())
 			m.footerMsg = successStyle.Render(" [✅ Raw Copied!]")
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 		}

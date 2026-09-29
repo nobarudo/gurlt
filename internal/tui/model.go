@@ -50,6 +50,16 @@ type Model struct {
 	searchQuery      string
 	searchMatches    []int
 	searchMatchIndex int
+	filterInput      textinput.Model
+	isFiltering      bool
+	jsonPathQuery    string
+	filteredContent  string
+}
+
+// SetJSONPathQuery sets the initial JSON path filter query
+func (m *Model) SetJSONPathQuery(q string) {
+	m.jsonPathQuery = q
+	m.filterInput.SetValue(q)
 }
 
 // BuildCurlCmd は現在の設定値（URL, Header, Body, 各種オプション）から完全なcURLコマンド文字列を生成します

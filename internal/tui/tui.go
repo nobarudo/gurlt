@@ -101,6 +101,11 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 	srcInput.Prompt = "/ "
 	srcInput.CharLimit = 128
 
+	fInput := textinput.New()
+	fInput.Placeholder = ".data.users[0].name"
+	fInput.Prompt = "JSON Path: "
+	fInput.CharLimit = 128
+
 	return Model{
 		methodInput:  m,
 		urlInput:     u,
@@ -110,6 +115,7 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 		proxyInput:   pInput,
 		timeoutInput: tInput,
 		searchInput:  srcInput,
+		filterInput:  fInput,
 		focusIndex:   1,
 		format:       format,
 		location:     location,

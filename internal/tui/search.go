@@ -83,19 +83,20 @@ func performSearch(content, query string, currentMatchIdx int) searchResult {
 }
 
 func (m *Model) updateSearch(jump bool) {
+	content := m.activeContent()
 	if m.searchQuery == "" {
 		m.searchMatches = nil
 		m.searchMatchIndex = 0
 		if m.responseView.Width > 0 {
-			wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
+			wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(content)
 			m.responseView.SetContent(wrappedRaw)
 		} else {
-			m.responseView.SetContent(m.rawContent)
+			m.responseView.SetContent(content)
 		}
 		return
 	}
 
-	res := performSearch(m.rawContent, m.searchQuery, m.searchMatchIndex)
+	res := performSearch(content, m.searchQuery, m.searchMatchIndex)
 	m.searchMatches = res.matchLines
 	if res.totalMatches > 0 {
 		m.searchMatchIndex = (m.searchMatchIndex%res.totalMatches + res.totalMatches) % res.totalMatches

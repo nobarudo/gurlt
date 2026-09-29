@@ -33,6 +33,8 @@ func (m Model) rawView() string {
 	content += responseBoxStyle.Render(m.responseView.View()) + "\n\n"
 	if m.isSaving {
 		content += m.saveInput.View() + "   [Enter] Confirm   [Esc] Cancel"
+	} else if m.isFiltering {
+		content += m.filterInput.View() + "   [Enter] Apply   [Esc] Cancel"
 	} else if m.isSearching {
 		matchInfo := "[0/0]"
 		if len(m.searchMatches) > 0 {
@@ -44,9 +46,12 @@ func (m Model) rawView() string {
 		if len(m.searchMatches) > 0 {
 			matchInfo = fmt.Sprintf("[%d/%d]", m.searchMatchIndex+1, len(m.searchMatches))
 		}
-		content += searchCountStyle.Render(matchInfo) + " " + infoStyle.Render("[n] Next   [N] Prev   [/] Edit   [Esc] Clear   [c] Copy   [ctrl+r] Back") + m.footerMsg + "\n"
+		content += searchCountStyle.Render(matchInfo) + " " + infoStyle.Render("[n] Next   [N] Prev   [/] Edit   [Esc] Clear Search   [c] Copy   [ctrl+r] Back") + m.footerMsg + "\n"
+	} else if m.jsonPathQuery != "" {
+		filterTag := searchCountStyle.Render(fmt.Sprintf("[Filter: %s]", m.jsonPathQuery))
+		content += filterTag + " " + infoStyle.Render("[p/f] Edit Filter   [Esc] Clear Filter   [/] Search   [c] Copy   [ctrl+r] Back") + m.footerMsg + "\n"
 	} else {
-		content += infoStyle.Render("[/] Search   [c/ctrl+a] Copy Raw   [s] Save to File   [ctrl+r] Back") + m.footerMsg + "\n"
+		content += infoStyle.Render("[/] Search   [p/f] JSON Filter   [c/ctrl+a] Copy Raw   [s] Save to File   [ctrl+r] Back") + m.footerMsg + "\n"
 	}
 	return appStyle.Render(content)
 }
@@ -219,6 +224,9 @@ func (m Model) optionsModalView() string {
 	}
 	if m.timing.Total > 0 {
 		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Latency (Last):      %s (TTFB: %s)", client.FormatDuration(m.timing.Total), client.FormatDuration(m.timing.ServerProcessing))) + "\n")
+	}
+	if m.jsonPathQuery != "" {
+		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • JSON Path Filter:    %s", m.jsonPathQuery)) + "\n")
 	}
 	b.WriteString("\n")
 
