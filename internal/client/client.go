@@ -170,13 +170,19 @@ func Send(opts RequestOptions) Result {
 			multipartContentType = w.FormDataContentType()
 		} else {
 			form := url.Values{}
+			hasFormKey := false
 			for _, line := range strings.Split(opts.Body, "\n") {
 				parts := strings.SplitN(line, "=", 2)
 				if len(parts) == 2 {
 					form.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+					hasFormKey = true
 				}
 			}
-			reqBody = strings.NewReader(form.Encode())
+			if hasFormKey {
+				reqBody = strings.NewReader(form.Encode())
+			} else {
+				reqBody = strings.NewReader(opts.Body)
+			}
 		}
 	}
 

@@ -27,6 +27,10 @@ gurlt https://example.com/
 # JSON response path filtering (jq / gjson equivalent)
 gurlt -q ".users[0].name" https://api.example.com/users
 
+# Read payload from file (-d @file or --json @file)
+gurlt -d @payload.json https://httpbin.org/post
+gurlt -d @query.graphql https://api.github.com/graphql
+
 # JSON request shorthand (automatically sets method to POST, and adds JSON headers)
 gurlt --json '{"name":"alice","age":30}' https://httpbin.org/post
 
@@ -90,6 +94,16 @@ Filter and drill down into JSON responses via CLI or interactively in Raw View:
 - **Interactive in Raw View (`Ctrl+R`)**: Press `p` or `f` to enter a JSON Path query.
 - Supports dot notation (`.user.name`), array indexing (`[0]`), negative indexing (`[-1]`), array wildcards (`[*]`), bracketed keys (`['content-type']`), and length helper (`.items.length`).
 - Filtered results can be searched (`/`), copied (`c` or `Ctrl+A`), or saved to disk (`s`).
+
+**8. Load Payload from File (`-d @<file>`, `--json @<file>`)**
+
+Load large payloads, JSON bodies, or GraphQL queries directly from files:
+- Use `-d @<file>`, `--data @<file>`, `--data-binary @<file>`, or `--json @<file>`.
+- `gurlt` reads the file content from the filesystem and expands it directly into the Body text area.
+- If the content is valid JSON, it automatically enables JSON format mode and pretty-prints the body.
+- Supports relative paths, absolute paths, quoted paths (`-d @"my file.json"`), and home directory expansion (`-d @~/payload.json`).
+- If the file does not exist, an error is reported immediately and execution halts safely.
+- Literal `@` can be sent without file expansion using `--data-raw @literal`.
 
 ## ⌨️ Keybindings
 

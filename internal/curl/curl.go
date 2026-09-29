@@ -61,6 +61,9 @@ func Build(method, reqUrl, headers, body, format string, location, insecure, ver
 			}
 			if len(form) > 0 {
 				cmd += fmt.Sprintf(" -d '%s'", form.Encode())
+			} else if body != "" {
+				singleLine := strings.ReplaceAll(body, "\n", " ")
+				cmd += fmt.Sprintf(" -d '%s'", singleLine)
 			}
 		}
 	}

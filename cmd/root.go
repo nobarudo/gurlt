@@ -18,6 +18,7 @@ var (
 	format         string
 	headers        []string
 	data           string
+	dataRaw        string
 	forms          []string
 	user           string
 	userAgent      string
@@ -39,6 +40,7 @@ var rootCmd = &cobra.Command{
 	FParseErrWhitelist: cobra.FParseErrWhitelist{
 		UnknownFlags: true,
 	},
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		urlInput := ""
 		if len(args) > 0 {
@@ -83,9 +85,19 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
+		// --data-raw または parsedOpts.IsDataRaw の場合、@ によるファイル読み込みは行わない
+		isRaw := cmd.Flags().Changed("data-raw") || (parsedOpts != nil && parsedOpts.IsDataRaw)
+		if dataRaw != "" {
+			data = dataRaw
+		}
+
 		// --json オプションが指定された場合
 		if jsonData != "" {
-			data = jsonData
+			loaded, err := curl.LoadPayload(jsonData)
+			if err != nil {
+				return err
+			}
+			data = loaded
 			format = "json"
 			if method == "GET" {
 				method = "POST"
@@ -121,6 +133,12 @@ var rootCmd = &cobra.Command{
 			if method == "GET" {
 				method = "POST"
 			}
+		} else if !isRaw && data != "" && strings.HasPrefix(data, "@") {
+			loaded, err := curl.LoadPayload(data)
+			if err != nil {
+				return err
+			}
+			data = loaded
 		}
 
 		// -d (data) が指定されていて、かつ -X がデフォルト(GET)ならPOSTにする
@@ -197,7 +215,7 @@ func getExtraArgs(args []string) string {
 	knownValueFlags := map[string]bool{
 		"-X": true, "--request": true,
 		"-H": true, "--header": true,
-		"-d": true, "--data": true, "--data-raw": true,
+		"-d": true, "--data": true, "--data-raw": true, "--data-binary": true, "--data-ascii": true,
 		"-F": true, "--form": true,
 		"--json":            true,
 		"-u":                true, "--user": true,
@@ -264,7 +282,9 @@ func init() {
 	rootCmd.Flags().StringVarP(&method, "request", "X", "GET", "Specify request command to use")
 	rootCmd.Flags().StringArrayVarP(&headers, "header", "H", []string{}, "Pass custom header(s) to server")
 	rootCmd.Flags().StringVarP(&data, "data", "d", "", "HTTP POST data")
-	rootCmd.Flags().StringVar(&data, "data-raw", "", "HTTP POST data (same as --data)")
+	rootCmd.Flags().StringVar(&dataRaw, "data-raw", "", "HTTP POST data (same as --data, but @ is not treated as a file)")
+	rootCmd.Flags().StringVar(&data, "data-binary", "", "HTTP POST binary data")
+	rootCmd.Flags().StringVar(&data, "data-ascii", "", "HTTP POST ASCII data")
 	rootCmd.Flags().StringArrayVarP(&forms, "form", "F", []string{}, "Specify multipart MIME data")
 	rootCmd.Flags().StringVar(&jsonData, "json", "", "HTTP POST data with JSON content-type and accept headers")
 	rootCmd.Flags().StringVarP(&user, "user", "u", "", "Server user and password")

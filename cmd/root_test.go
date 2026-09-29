@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nobarudo/gurlt/internal/curl"
 )
 
 func TestGetExtraArgs(t *testing.T) {
@@ -13,7 +17,7 @@ func TestGetExtraArgs(t *testing.T) {
 	}{
 		{
 			name: "known flags only",
-			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "-F", "user=alice", "--form", "avatar=@pic.png", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-k", "-x", "http://127.0.0.1:8080", "-w", "%{time_total}", "-q", ".data.users[0]", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
+			args: []string{"-X", "POST", "-H", "Content-Type: application/json", "-d", "foo", "--data-binary", "bin", "--data-ascii", "asc", "-F", "user=alice", "--form", "avatar=@pic.png", "--json", `{"key":"val"}`, "-u", "user:pass", "-A", "myagent", "-m", "10", "--connect-timeout", "2.5", "-k", "-x", "http://127.0.0.1:8080", "-w", "%{time_total}", "-q", ".data.users[0]", "-L", "-f", "json", "--log", "audit.log", "https://example.com"},
 			want: "",
 		},
 		{
@@ -229,6 +233,128 @@ func TestMultipartFormFlagHandling(t *testing.T) {
 	}
 }
 
+func TestPayloadFileHandling(t *testing.T) {
+	origJsonData := jsonData
+	origData := data
+	origDataRaw := dataRaw
+	origFormat := format
+	origMethod := method
+	origHeaders := headers
+	defer func() {
+		jsonData = origJsonData
+		data = origData
+		dataRaw = origDataRaw
+		format = origFormat
+		method = origMethod
+		headers = origHeaders
+	}()
 
+	tmpDir := t.TempDir()
 
+	// 1. Test -d @payload.json (JSON content auto-switches format to json)
+	jsonFile := filepath.Join(tmpDir, "payload.json")
+	jsonContent := `{"user": "alice", "action": "login"}`
+	if err := os.WriteFile(jsonFile, []byte(jsonContent), 0644); err != nil {
+		t.Fatalf("failed to write json file: %v", err)
+	}
 
+	data = "@" + jsonFile
+	jsonData = ""
+	dataRaw = ""
+	format = "form"
+	method = "GET"
+	headers = []string{}
+
+	loaded, err := curl.LoadPayload(data)
+	if err != nil {
+		t.Fatalf("unexpected error from LoadPayload: %v", err)
+	}
+	data = loaded
+	if data != "" && method == "GET" {
+		method = "POST"
+	}
+	if data != "" && format == "form" {
+		trimmed := strings.TrimSpace(data)
+		if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
+			(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
+			format = "json"
+		}
+	}
+
+	if data != jsonContent {
+		t.Errorf("expected data %q, got %q", jsonContent, data)
+	}
+	if method != "POST" {
+		t.Errorf("expected method POST, got %s", method)
+	}
+	if format != "json" {
+		t.Errorf("expected format json, got %s", format)
+	}
+
+	// 2. Test -d @query.graphql (Plain text / GraphQL stays non-json)
+	gqlFile := filepath.Join(tmpDir, "query.graphql")
+	gqlContent := "query Viewer { viewer { login } }"
+	if err := os.WriteFile(gqlFile, []byte(gqlContent), 0644); err != nil {
+		t.Fatalf("failed to write gql file: %v", err)
+	}
+
+	data = "@" + gqlFile
+	format = "form"
+	method = "GET"
+	loaded, err = curl.LoadPayload(data)
+	if err != nil {
+		t.Fatalf("unexpected error from LoadPayload: %v", err)
+	}
+	data = loaded
+	if data != "" && method == "GET" {
+		method = "POST"
+	}
+	if data != gqlContent {
+		t.Errorf("expected data %q, got %q", gqlContent, data)
+	}
+	if format != "form" {
+		t.Errorf("expected format form, got %s", format)
+	}
+
+	// 3. Test --json @payload.json (adds JSON headers and sets format json)
+	jsonData = "@" + jsonFile
+	data = ""
+	format = "form"
+	method = "GET"
+	headers = []string{}
+
+	loadedJSON, err := curl.LoadPayload(jsonData)
+	if err != nil {
+		t.Fatalf("unexpected error from LoadPayload: %v", err)
+	}
+	data = loadedJSON
+	format = "json"
+	if method == "GET" {
+		method = "POST"
+	}
+	headers = append(headers, "Accept: application/json", "Content-Type: application/json")
+
+	if data != jsonContent {
+		t.Errorf("expected data %q, got %q", jsonContent, data)
+	}
+	if format != "json" {
+		t.Errorf("expected format json, got %s", format)
+	}
+	if method != "POST" {
+		t.Errorf("expected method POST, got %s", method)
+	}
+}
+
+func TestPayloadFileErrors(t *testing.T) {
+	// 1. Missing file returns error
+	_, err := curl.LoadPayload("@nonexistent-file-xyz.json")
+	if err == nil {
+		t.Fatalf("expected error for non-existent file, got nil")
+	}
+
+	// 2. Empty path after @ returns error
+	_, err = curl.LoadPayload("@")
+	if err == nil {
+		t.Fatalf("expected error for empty path '@', got nil")
+	}
+}

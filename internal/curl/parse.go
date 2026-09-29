@@ -23,6 +23,7 @@ type ParsedOptions struct {
 	ConnectTimeout float64
 	IsMultipart    bool
 	Forms          []string
+	IsDataRaw      bool
 }
 
 // Parse はcURLコマンドの文字列を安全に分解し、必要な設定だけを抽出します
@@ -54,10 +55,17 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 				opts.Headers = append(opts.Headers, args[i+1])
 				i++
 			}
-		case "-d", "--data", "--data-raw", "--data-binary":
+		case "-d", "--data", "--data-binary", "--data-ascii":
 			if i+1 < len(args) {
 				opts.Body = args[i+1]
 				opts.Method = "POST" // curlの仕様: -dがあるとPOSTになる
+				i++
+			}
+		case "--data-raw":
+			if i+1 < len(args) {
+				opts.Body = args[i+1]
+				opts.IsDataRaw = true
+				opts.Method = "POST"
 				i++
 			}
 		case "--json":
