@@ -268,6 +268,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.optionsCursor = 0
 		m.proxyInput.Blur()
 		m.timeoutInput.Blur()
+		m.bearerInput.Blur()
+		m.bearerInput.SetValue(extractBearerToken(m.headerInput.Value()))
 		return m, nil
 	case "tab":
 		if m.focusIndex == 2 {
@@ -465,25 +467,43 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 3. モーダル内の項目選択モードの処理
+	// 3. Bearer Token入力欄を編集中（Focused）の場合の処理
+	if m.bearerInput.Focused() {
+		switch msg.String() {
+		case "esc", "enter":
+			m.bearerInput.Blur()
+			token := strings.TrimSpace(m.bearerInput.Value())
+			m.headerInput.SetValue(setOrUpdateBearerHeader(m.headerInput.Value(), token))
+			return m, nil
+		case "ctrl+c":
+			return m, tea.Quit
+		default:
+			var cmd tea.Cmd
+			m.bearerInput, cmd = m.bearerInput.Update(msg)
+			return m, cmd
+		}
+	}
+
+	// 4. モーダル内の項目選択モードの処理
 	switch msg.String() {
 	case "esc", "ctrl+o":
 		m.showOptionsModal = false
 		m.proxyInput.Blur()
 		m.timeoutInput.Blur()
+		m.bearerInput.Blur()
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
 	case "j", "down", "tab":
 		m.optionsCursor++
-		if m.optionsCursor > 4 {
+		if m.optionsCursor > 5 {
 			m.optionsCursor = 0
 		}
 		return m, nil
 	case "k", "up", "shift+tab":
 		m.optionsCursor--
 		if m.optionsCursor < 0 {
-			m.optionsCursor = 4
+			m.optionsCursor = 5
 		}
 		return m, nil
 	case " ", "enter":
@@ -499,6 +519,9 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		case 4:
 			cmd := m.timeoutInput.Focus()
+			return m, cmd
+		case 5:
+			cmd := m.bearerInput.Focus()
 			return m, cmd
 		}
 		return m, nil

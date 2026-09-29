@@ -78,21 +78,35 @@ func TestOptionsModalNavigationAndProxyEdit(t *testing.T) {
 		t.Errorf("expected cursor at 4 (Timeout), got %d", m.optionsCursor)
 	}
 
-	// 4. さらに j を押せば 0 に循環
+	// 4. j を押して Bearer (index 5) に移動
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = res.(Model)
+	if m.optionsCursor != 5 {
+		t.Errorf("expected cursor at 5 (Bearer), got %d", m.optionsCursor)
+	}
+
+	// 5. さらに j を押せば 0 に循環
 	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m = res.(Model)
 	if m.optionsCursor != 0 {
 		t.Errorf("expected cursor to cycle back to 0, got %d", m.optionsCursor)
 	}
 
-	// 5. k を押して Timeout (index 4) に戻る
+	// 6. k を押して Bearer (index 5) に戻る
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	m = res.(Model)
+	if m.optionsCursor != 5 {
+		t.Fatalf("expected cursor at 5, got %d", m.optionsCursor)
+	}
+
+	// 7. k を押して Timeout (index 4) に戻る
 	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 	m = res.(Model)
 	if m.optionsCursor != 4 {
 		t.Fatalf("expected cursor at 4, got %d", m.optionsCursor)
 	}
 
-	// 6. もう一度 k を押して Proxy (index 3) に戻る
+	// 8. もう一度 k を押して Proxy (index 3) に戻る
 	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 	m = res.(Model)
 	if m.optionsCursor != 3 {
@@ -167,6 +181,63 @@ func TestOptionsModalTimeoutEdit(t *testing.T) {
 	cmd := m.BuildCurlCmd()
 	if !strings.Contains(cmd, "-m 15") {
 		t.Errorf("expected -m 15 in cmd, got %s", cmd)
+	}
+}
+
+func TestOptionsModalBearerEdit(t *testing.T) {
+	m := InitialModel("https://api.example.com", "GET", "Content-Type: application/json", "", "json", false, "", "")
+
+	// ctrl+o でモーダルを開く
+	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	m = res.(Model)
+
+	// Bearer (index 5) へ移動
+	for i := 0; i < 5; i++ {
+		res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		m = res.(Model)
+	}
+	if m.optionsCursor != 5 {
+		t.Fatalf("expected cursor at 5, got %d", m.optionsCursor)
+	}
+
+	// Space で編集開始
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = res.(Model)
+	if !m.bearerInput.Focused() {
+		t.Fatalf("bearerInput should be focused")
+	}
+
+	// "token-abc" と入力
+	for _, r := range "token-abc" {
+		res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = res.(Model)
+	}
+
+	// Enter で確定
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = res.(Model)
+	if m.bearerInput.Focused() {
+		t.Fatalf("bearerInput should blur after Enter")
+	}
+	if m.bearerInput.Value() != "token-abc" {
+		t.Errorf("expected bearerInput value 'token-abc', got %q", m.bearerInput.Value())
+	}
+
+	// headerInput に Authorization: Bearer token-abc が反映されていること
+	if !strings.Contains(m.headerInput.Value(), "Authorization: Bearer token-abc") {
+		t.Errorf("expected Authorization: Bearer token-abc in headers, got %q", m.headerInput.Value())
+	}
+
+	// cURLプレビューに -H 'Authorization: Bearer token-abc' が含まれること
+	cmd := m.BuildCurlCmd()
+	if !strings.Contains(cmd, "-H 'Authorization: Bearer token-abc'") {
+		t.Errorf("expected Authorization header in cmd preview, got %s", cmd)
+	}
+
+	// SetBearer で直接上書きテスト
+	m.SetBearer("new-token-xyz")
+	if !strings.Contains(m.headerInput.Value(), "Authorization: Bearer new-token-xyz") {
+		t.Errorf("expected new-token-xyz in headers, got %q", m.headerInput.Value())
 	}
 }
 

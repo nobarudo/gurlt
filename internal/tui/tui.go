@@ -106,6 +106,14 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 	fInput.Prompt = "JSON Path: "
 	fInput.CharLimit = 128
 
+	bBearerInput := textinput.New()
+	bBearerInput.Placeholder = "eyJhbGciOiJIUzI1NiIs..."
+	bBearerInput.Prompt = "  Token: "
+	bBearerInput.CharLimit = 1024
+	if initialBearer := extractBearerToken(headerStr); initialBearer != "" {
+		bBearerInput.SetValue(initialBearer)
+	}
+
 	return Model{
 		methodInput:  m,
 		urlInput:     u,
@@ -116,6 +124,7 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 		timeoutInput: tInput,
 		searchInput:  srcInput,
 		filterInput:  fInput,
+		bearerInput:  bBearerInput,
 		focusIndex:   1,
 		format:       format,
 		location:     location,

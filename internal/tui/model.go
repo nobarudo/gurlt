@@ -54,6 +54,13 @@ type Model struct {
 	isFiltering      bool
 	jsonPathQuery    string
 	filteredContent  string
+	bearerInput      textinput.Model
+}
+
+// SetBearer sets the bearer token, updates bearerInput, and synchronizes the Authorization header
+func (m *Model) SetBearer(token string) {
+	m.bearerInput.SetValue(token)
+	m.headerInput.SetValue(setOrUpdateBearerHeader(m.headerInput.Value(), token))
 }
 
 // SetJSONPathQuery sets the initial JSON path filter query

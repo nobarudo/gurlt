@@ -31,6 +31,7 @@ var (
 	logFile        string
 	writeOut       string
 	jqQuery        string
+	bearerToken    string
 )
 
 var rootCmd = &cobra.Command{
@@ -80,6 +81,9 @@ var rootCmd = &cobra.Command{
 				}
 				if parsedOpts.ConnectTimeout > 0 {
 					connectTimeout = parsedOpts.ConnectTimeout
+				}
+				if parsedOpts.Bearer != "" && bearerToken == "" {
+					bearerToken = parsedOpts.Bearer
 				}
 				headers = append(headers, parsedOpts.Headers...)
 			}
@@ -163,6 +167,17 @@ var rootCmd = &cobra.Command{
 		if user != "" {
 			encoded := base64.StdEncoding.EncodeToString([]byte(user))
 			headerLines = append(headerLines, fmt.Sprintf("Authorization: Basic %s", encoded))
+		} else if bearerToken != "" {
+			hasAuth := false
+			for _, h := range headers {
+				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(h)), "authorization:") {
+					hasAuth = true
+					break
+				}
+			}
+			if !hasAuth {
+				headerLines = append(headerLines, fmt.Sprintf("Authorization: Bearer %s", bearerToken))
+			}
 		}
 		for _, h := range headers {
 			headerLines = append(headerLines, h)
@@ -192,6 +207,9 @@ var rootCmd = &cobra.Command{
 		if jqQuery != "" {
 			m.SetJSONPathQuery(jqQuery)
 		}
+		if bearerToken != "" {
+			m.SetBearer(bearerToken)
+		}
 
 		p := tea.NewProgram(m, tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
@@ -218,6 +236,7 @@ func getExtraArgs(args []string) string {
 		"-d": true, "--data": true, "--data-raw": true, "--data-binary": true, "--data-ascii": true,
 		"-F": true, "--form": true,
 		"--json":            true,
+		"--bearer":          true, "--oauth2-bearer": true,
 		"-u":                true, "--user": true,
 		"-A":                true, "--user-agent": true,
 		"-f":                true, "--format": true,
@@ -287,6 +306,8 @@ func init() {
 	rootCmd.Flags().StringVar(&data, "data-ascii", "", "HTTP POST ASCII data")
 	rootCmd.Flags().StringArrayVarP(&forms, "form", "F", []string{}, "Specify multipart MIME data")
 	rootCmd.Flags().StringVar(&jsonData, "json", "", "HTTP POST data with JSON content-type and accept headers")
+	rootCmd.Flags().StringVar(&bearerToken, "bearer", "", "OAuth 2.0 / Bearer token for Authorization header")
+	rootCmd.Flags().StringVar(&bearerToken, "oauth2-bearer", "", "OAuth 2.0 Bearer token (curl compatible)")
 	rootCmd.Flags().StringVarP(&user, "user", "u", "", "Server user and password")
 	rootCmd.Flags().StringVarP(&userAgent, "user-agent", "A", "", "Send User-Agent <name> to server")
 	rootCmd.Flags().Float64VarP(&maxTime, "max-time", "m", 0, "Maximum time allowed for the transfer (in seconds)")

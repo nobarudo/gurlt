@@ -21,9 +21,12 @@ go install github.com/nobarudo/gurlt@latest
 gurlt https://example.com/
 ```
 
-**2. With Flags (-X, -H, -d, -F, -u, -A, -L, --json, -m, -k, -x, -q/--jq)**
+**2. With Flags (-X, -H, -d, -F, -u, -A, -L, --json, -m, -k, -x, -q/--jq, --bearer)**
 
 ```bash
+# Direct Bearer authentication (--bearer or --oauth2-bearer)
+gurlt --bearer "eyJhbGciOi..." https://api.example.com/me
+
 # JSON response path filtering (jq / gjson equivalent)
 gurlt -q ".users[0].name" https://api.example.com/users
 
@@ -83,7 +86,8 @@ Press `Ctrl+O` from the main view to open the options modal and configure advanc
 - `-L / --location`: Follow HTTP redirects
 - `-x`: Specify HTTP/HTTPS proxy URL
 - `-m`: Specify transfer timeout in seconds
-- View current configuration (`--format`, `--connect-timeout`, `--log`, latency metrics, and extra CLI arguments)
+- `--bearer`: Configure OAuth 2.0 / Bearer token (syncs directly with Authorization headers)
+- View current configuration (`--format`, `--connect-timeout`, masked `--bearer`, `--log`, latency metrics, and extra CLI arguments)
 
 Changes made in the modal are immediately reflected in the live `💻 cURL:` preview and copied with `Ctrl+A`.
 
@@ -104,6 +108,13 @@ Load large payloads, JSON bodies, or GraphQL queries directly from files:
 - Supports relative paths, absolute paths, quoted paths (`-d @"my file.json"`), and home directory expansion (`-d @~/payload.json`).
 - If the file does not exist, an error is reported immediately and execution halts safely.
 - Literal `@` can be sent without file expansion using `--data-raw @literal`.
+
+**9. Bearer Authentication (`--bearer <token>`)**
+
+Directly specify Bearer tokens without manually formatting `Authorization: Bearer <token>`:
+- **CLI Flags**: `--bearer <token>` or `--oauth2-bearer <token>` (automatically generates header and populates Options Modal).
+- **Options Modal (`Ctrl+O`)**: Press Space on "Bearer Token" to enter or edit tokens. Updates immediately sync with the Headers textarea and the live cURL preview.
+- Clearing the token in the modal cleanly removes the header.
 
 ## ⌨️ Keybindings
 

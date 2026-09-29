@@ -1,6 +1,7 @@
 package curl
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,7 @@ type ParsedOptions struct {
 	IsMultipart    bool
 	Forms          []string
 	IsDataRaw      bool
+	Bearer         string
 }
 
 // Parse はcURLコマンドの文字列を安全に分解し、必要な設定だけを抽出します
@@ -94,6 +96,12 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 		case "-u", "--user":
 			if i+1 < len(args) {
 				opts.User = args[i+1]
+				i++
+			}
+		case "--bearer", "--oauth2-bearer":
+			if i+1 < len(args) {
+				opts.Bearer = args[i+1]
+				opts.Headers = append(opts.Headers, fmt.Sprintf("Authorization: Bearer %s", args[i+1]))
 				i++
 			}
 		case "-A", "--user-agent":

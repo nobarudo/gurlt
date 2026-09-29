@@ -205,6 +205,33 @@ func TestParseWithWriteOut(t *testing.T) {
 	}
 }
 
+func TestParseWithBearer(t *testing.T) {
+	// 1. --bearer token
+	cmdStr := "curl 'https://api.example.com' --bearer 'token-123'"
+	opts, err := Parse(cmdStr)
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	if opts.Bearer != "token-123" {
+		t.Errorf("Bearer = %q, want token-123", opts.Bearer)
+	}
+	hasBearerHeader := false
+	for _, h := range opts.Headers {
+		if h == "Authorization: Bearer token-123" {
+			hasBearerHeader = true
+		}
+	}
+	if !hasBearerHeader {
+		t.Errorf("expected 'Authorization: Bearer token-123' in headers, got %v", opts.Headers)
+	}
 
-
-
+	// 2. --oauth2-bearer token
+	cmdStrOAuth := "curl 'https://api.example.com' --oauth2-bearer 'oauth-456'"
+	optsOAuth, err := Parse(cmdStrOAuth)
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	if optsOAuth.Bearer != "oauth-456" {
+		t.Errorf("Bearer = %q, want oauth-456", optsOAuth.Bearer)
+	}
+}

@@ -187,6 +187,24 @@ func (m Model) optionsModalView() string {
 	}
 	b.WriteString(m.timeoutInput.View() + "\n\n")
 
+	// 6. --bearer Bearer Token
+	bearerCursor := "  "
+	if m.optionsCursor == 5 {
+		bearerCursor = "▶ "
+	}
+	bearerLabel := bearerCursor + "Bearer Token (--bearer):"
+	if m.optionsCursor == 5 {
+		if m.bearerInput.Focused() {
+			bearerLabel += " (Editing... [Enter/Esc] Done)"
+		} else {
+			bearerLabel += " (Press Space to edit)"
+		}
+		b.WriteString(modalSelectStyle.Render(bearerLabel) + "\n")
+	} else {
+		b.WriteString(modalItemStyle.Render(bearerLabel) + "\n")
+	}
+	b.WriteString(m.bearerInput.View() + "\n\n")
+
 	// Divider
 	b.WriteString(dividerStyle.Render(strings.Repeat("─", 54)) + "\n")
 
@@ -218,6 +236,14 @@ func (m Model) optionsModalView() string {
 	if m.connectTimeout > 0 {
 		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Connect Timeout:     %s", connTimeoutVal)) + "\n")
 	}
+	bearerVal := strings.TrimSpace(m.bearerInput.Value())
+	if bearerVal != "" {
+		masked := bearerVal
+		if len(masked) > 16 {
+			masked = masked[:6] + "..." + masked[len(masked)-4:]
+		}
+		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Bearer Token:        %s", masked)) + "\n")
+	}
 	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Log File (--log):    %s", logVal)) + "\n")
 	if extraVal != "(none)" {
 		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Extra cURL Args:     %s", extraVal)) + "\n")
@@ -231,7 +257,7 @@ func (m Model) optionsModalView() string {
 	b.WriteString("\n")
 
 	// Help text
-	if m.proxyInput.Focused() || m.timeoutInput.Focused() {
+	if m.proxyInput.Focused() || m.timeoutInput.Focused() || m.bearerInput.Focused() {
 		b.WriteString(modalHelpStyle.Render("[Type] Input value   [Enter/Esc] Done Editing"))
 	} else {
 		b.WriteString(modalHelpStyle.Render("[j/k] Move   [Space] Toggle / Edit   [Esc/ctrl+o] Back"))
