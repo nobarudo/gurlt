@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/nobarudo/gurlt/internal/client"
 )
 
 func (m Model) View() string {
@@ -31,8 +33,25 @@ func (m Model) rawView() string {
 	content += responseBoxStyle.Render(m.responseView.View()) + "\n\n"
 	if m.isSaving {
 		content += m.saveInput.View() + "   [Enter] Confirm   [Esc] Cancel"
+	} else if m.isFiltering {
+		content += m.filterInput.View() + "   [Enter] Apply   [Esc] Cancel"
+	} else if m.isSearching {
+		matchInfo := "[0/0]"
+		if len(m.searchMatches) > 0 {
+			matchInfo = fmt.Sprintf("[%d/%d]", m.searchMatchIndex+1, len(m.searchMatches))
+		}
+		content += m.searchInput.View() + " " + searchCountStyle.Render(matchInfo) + "   [Enter] Next   [Shift+Tab] Prev   [Esc] Done"
+	} else if m.searchQuery != "" {
+		matchInfo := "[0/0]"
+		if len(m.searchMatches) > 0 {
+			matchInfo = fmt.Sprintf("[%d/%d]", m.searchMatchIndex+1, len(m.searchMatches))
+		}
+		content += searchCountStyle.Render(matchInfo) + " " + infoStyle.Render("[n] Next   [N] Prev   [/] Edit   [Esc] Clear Search   [c] Copy   [ctrl+r] Back") + m.footerMsg + "\n"
+	} else if m.jsonPathQuery != "" {
+		filterTag := searchCountStyle.Render(fmt.Sprintf("[Filter: %s]", m.jsonPathQuery))
+		content += filterTag + " " + infoStyle.Render("[p/f] Edit Filter   [Esc] Clear Filter   [/] Search   [c] Copy   [ctrl+r] Back") + m.footerMsg + "\n"
 	} else {
-		content += infoStyle.Render("[c/ctrl+a] Copy Raw   [s] Save to File   [ctrl+r] Back") + m.footerMsg + "\n"
+		content += infoStyle.Render("[/] Search   [p/f] JSON Filter   [c/ctrl+a] Copy Raw   [s] Save to File   [ctrl+r] Back") + m.footerMsg + "\n"
 	}
 	return appStyle.Render(content)
 }
@@ -76,6 +95,10 @@ func (m Model) mainView() string {
 		content += errorStyle.Render(fmt.Sprintf("⚠️ Status: %s", m.responseStatus)) + "\n"
 	} else {
 		content += "\n"
+	}
+
+	if m.timing.Total > 0 {
+		content += m.renderTimingView() + "\n"
 	}
 
 	content += dividerStyle.Render(strings.Repeat("─", m.terminalWidth-10)) + "\n"
@@ -164,6 +187,42 @@ func (m Model) optionsModalView() string {
 	}
 	b.WriteString(m.timeoutInput.View() + "\n\n")
 
+	// 6. --bearer Bearer Token
+	bearerCursor := "  "
+	if m.optionsCursor == 5 {
+		bearerCursor = "▶ "
+	}
+	bearerLabel := bearerCursor + "Bearer Token (--bearer):"
+	if m.optionsCursor == 5 {
+		if m.bearerInput.Focused() {
+			bearerLabel += " (Editing... [Enter/Esc] Done)"
+		} else {
+			bearerLabel += " (Press Space to edit)"
+		}
+		b.WriteString(modalSelectStyle.Render(bearerLabel) + "\n")
+	} else {
+		b.WriteString(modalItemStyle.Render(bearerLabel) + "\n")
+	}
+	b.WriteString(m.bearerInput.View() + "\n\n")
+
+	// 7. -o Output File
+	outputCursor := "  "
+	if m.optionsCursor == 6 {
+		outputCursor = "▶ "
+	}
+	outputLabel := outputCursor + "Output File (-o):"
+	if m.optionsCursor == 6 {
+		if m.outputInput.Focused() {
+			outputLabel += " (Editing... [Enter/Esc] Done)"
+		} else {
+			outputLabel += " (Press Space to edit)"
+		}
+		b.WriteString(modalSelectStyle.Render(outputLabel) + "\n")
+	} else {
+		b.WriteString(modalItemStyle.Render(outputLabel) + "\n")
+	}
+	b.WriteString(m.outputInput.View() + "\n\n")
+
 	// Divider
 	b.WriteString(dividerStyle.Render(strings.Repeat("─", 54)) + "\n")
 
@@ -175,6 +234,10 @@ func (m Model) optionsModalView() string {
 	logVal := m.logFile
 	if logVal == "" {
 		logVal = "(none)"
+	}
+	outputVal := strings.TrimSpace(m.outputInput.Value())
+	if outputVal == "" {
+		outputVal = "(none)"
 	}
 	extraVal := m.extraArgs
 	if extraVal == "" {
@@ -195,14 +258,29 @@ func (m Model) optionsModalView() string {
 	if m.connectTimeout > 0 {
 		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Connect Timeout:     %s", connTimeoutVal)) + "\n")
 	}
+	bearerVal := strings.TrimSpace(m.bearerInput.Value())
+	if bearerVal != "" {
+		masked := bearerVal
+		if len(masked) > 16 {
+			masked = masked[:6] + "..." + masked[len(masked)-4:]
+		}
+		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Bearer Token:        %s", masked)) + "\n")
+	}
+	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Output File (-o):    %s", outputVal)) + "\n")
 	b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Log File (--log):    %s", logVal)) + "\n")
 	if extraVal != "(none)" {
 		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Extra cURL Args:     %s", extraVal)) + "\n")
 	}
+	if m.timing.Total > 0 {
+		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • Latency (Last):      %s (TTFB: %s)", client.FormatDuration(m.timing.Total), client.FormatDuration(m.timing.ServerProcessing))) + "\n")
+	}
+	if m.jsonPathQuery != "" {
+		b.WriteString(modalItemStyle.Render(fmt.Sprintf("  • JSON Path Filter:    %s", m.jsonPathQuery)) + "\n")
+	}
 	b.WriteString("\n")
 
 	// Help text
-	if m.proxyInput.Focused() || m.timeoutInput.Focused() {
+	if m.proxyInput.Focused() || m.timeoutInput.Focused() || m.bearerInput.Focused() || m.outputInput.Focused() {
 		b.WriteString(modalHelpStyle.Render("[Type] Input value   [Enter/Esc] Done Editing"))
 	} else {
 		b.WriteString(modalHelpStyle.Render("[j/k] Move   [Space] Toggle / Edit   [Esc/ctrl+o] Back"))
@@ -220,5 +298,86 @@ func (m Model) optionsModalView() string {
 	}
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m Model) renderTimingView() string {
+	if m.timing.Total <= 0 {
+		return ""
+	}
+
+	barWidth := m.terminalWidth - 30
+	if barWidth > 40 {
+		barWidth = 40
+	}
+	if barWidth < 15 {
+		barWidth = 15
+	}
+
+	dns := m.timing.DNSLookup
+	tcp := m.timing.TCPConnect
+	tls := m.timing.TLSHandshake
+	ttfb := m.timing.ServerProcessing
+	transfer := m.timing.ContentTransfer
+	total := m.timing.Total
+
+	calcWidth := func(d time.Duration) int {
+		if d <= 0 || total <= 0 {
+			return 0
+		}
+		w := int(float64(d) / float64(total) * float64(barWidth))
+		if w == 0 && d > 0 {
+			w = 1
+		}
+		return w
+	}
+
+	wDNS := calcWidth(dns)
+	wTCP := calcWidth(tcp)
+	wTLS := calcWidth(tls)
+	wTTFB := calcWidth(ttfb)
+	wTransfer := calcWidth(transfer)
+
+	sum := wDNS + wTCP + wTLS + wTTFB + wTransfer
+	if sum > barWidth {
+		diff := sum - barWidth
+		if wTTFB > diff {
+			wTTFB -= diff
+		} else if wTransfer > diff {
+			wTransfer -= diff
+		}
+	} else if sum < barWidth {
+		wTTFB += (barWidth - sum)
+	}
+
+	bar := "[" +
+		timingDNSStyle.Render(strings.Repeat("█", wDNS)) +
+		timingTCPStyle.Render(strings.Repeat("█", wTCP)) +
+		timingTLSStyle.Render(strings.Repeat("█", wTLS)) +
+		timingTTFBStyle.Render(strings.Repeat("█", wTTFB)) +
+		timingTransferStyle.Render(strings.Repeat("█", wTransfer)) +
+		"]"
+
+	var legendParts []string
+	if dns > 0 {
+		legendParts = append(legendParts, timingDNSStyle.Render(fmt.Sprintf("DNS: %s", client.FormatDuration(dns))))
+	}
+	if tcp > 0 {
+		legendParts = append(legendParts, timingTCPStyle.Render(fmt.Sprintf("TCP: %s", client.FormatDuration(tcp))))
+	}
+	if tls > 0 {
+		legendParts = append(legendParts, timingTLSStyle.Render(fmt.Sprintf("TLS: %s", client.FormatDuration(tls))))
+	}
+	if ttfb > 0 {
+		legendParts = append(legendParts, timingTTFBStyle.Render(fmt.Sprintf("TTFB: %s", client.FormatDuration(ttfb))))
+	}
+	if transfer > 0 {
+		legendParts = append(legendParts, timingTransferStyle.Render(fmt.Sprintf("Transfer: %s", client.FormatDuration(transfer))))
+	}
+
+	legend := strings.Join(legendParts, " │ ")
+
+	title := timingTotalStyle.Render(fmt.Sprintf("⏱️  Latency: %s", client.FormatDuration(total)))
+
+	return fmt.Sprintf("%s  %s\n%s", title, bar, legend)
 }
 

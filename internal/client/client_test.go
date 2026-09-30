@@ -1,11 +1,13 @@
 package client
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -103,3 +105,70 @@ func TestSendMultipart(t *testing.T) {
 	}
 }
 
+func TestSendWithTiming(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(10 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("TIMED"))
+	}))
+	defer server.Close()
+
+	opts := RequestOptions{
+		Method: "GET",
+		URL:    server.URL,
+	}
+
+	res := Send(opts)
+	if res.Err != nil {
+		t.Fatalf("Send returned error: %v", res.Err)
+	}
+	if res.Body != "TIMED" {
+		t.Errorf("expected body 'TIMED', got %s", res.Body)
+	}
+	if res.Timing.Total < 5*time.Millisecond {
+		t.Errorf("expected total time >= 5ms, got %v", res.Timing.Total)
+	}
+	if res.Timing.ServerProcessing <= 0 {
+		t.Errorf("expected server processing > 0, got %v", res.Timing.ServerProcessing)
+	}
+	if !strings.Contains(res.FullDump, "=== Latency Breakdown (curl -w) ===") {
+		t.Errorf("expected FullDump to contain latency breakdown header")
+	}
+}
+
+func TestSendWithOutputFile(t *testing.T) {
+	binaryData := []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Write(binaryData)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	outFile := filepath.Join(tmpDir, "response.bin")
+
+	opts := RequestOptions{
+		Method:     "GET",
+		URL:        server.URL,
+		OutputFile: outFile,
+	}
+
+	res := Send(opts)
+	if res.Err != nil {
+		t.Fatalf("Send returned unexpected error: %v", res.Err)
+	}
+	if res.SavedBytes != len(binaryData) {
+		t.Errorf("SavedBytes = %d, want %d", res.SavedBytes, len(binaryData))
+	}
+	if res.OutputFile != outFile {
+		t.Errorf("OutputFile = %q, want %q", res.OutputFile, outFile)
+	}
+
+	saved, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if !bytes.Equal(saved, binaryData) {
+		t.Errorf("saved content mismatch: got %v, want %v", saved, binaryData)
+	}
+}

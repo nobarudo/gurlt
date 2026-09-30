@@ -1,6 +1,7 @@
 package curl
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,9 @@ type ParsedOptions struct {
 	ConnectTimeout float64
 	IsMultipart    bool
 	Forms          []string
+	IsDataRaw      bool
+	Bearer         string
+	OutputFile     string
 }
 
 // Parse はcURLコマンドの文字列を安全に分解し、必要な設定だけを抽出します
@@ -54,10 +58,17 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 				opts.Headers = append(opts.Headers, args[i+1])
 				i++
 			}
-		case "-d", "--data", "--data-raw", "--data-binary":
+		case "-d", "--data", "--data-binary", "--data-ascii":
 			if i+1 < len(args) {
 				opts.Body = args[i+1]
 				opts.Method = "POST" // curlの仕様: -dがあるとPOSTになる
+				i++
+			}
+		case "--data-raw":
+			if i+1 < len(args) {
+				opts.Body = args[i+1]
+				opts.IsDataRaw = true
+				opts.Method = "POST"
 				i++
 			}
 		case "--json":
@@ -86,6 +97,12 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 		case "-u", "--user":
 			if i+1 < len(args) {
 				opts.User = args[i+1]
+				i++
+			}
+		case "--bearer", "--oauth2-bearer":
+			if i+1 < len(args) {
+				opts.Bearer = args[i+1]
+				opts.Headers = append(opts.Headers, fmt.Sprintf("Authorization: Bearer %s", args[i+1]))
 				i++
 			}
 		case "-A", "--user-agent":
@@ -123,6 +140,15 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 				opts.Forms = append(opts.Forms, args[i+1])
 				opts.Method = "POST"
 				opts.IsMultipart = true
+				i++
+			}
+		case "-w", "--write-out":
+			if i+1 < len(args) {
+				i++
+			}
+		case "-o", "--output":
+			if i+1 < len(args) {
+				opts.OutputFile = args[i+1]
 				i++
 			}
 		default:

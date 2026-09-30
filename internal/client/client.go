@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"net/url"
 	"os"
@@ -29,15 +30,20 @@ type RequestOptions struct {
 	Proxy          string
 	MaxTime        float64
 	ConnectTimeout float64
+	OutputFile     string
 }
 
 // Result はHTTPリクエストの結果を格納する構造体です
 type Result struct {
-	Status   string
-	Body     string
-	FullDump string
-	Err      error
-	History  []HistoryEntry
+	Status     string
+	Body       string
+	BodyBytes  []byte
+	FullDump   string
+	Err        error
+	History    []HistoryEntry
+	Timing     TimingInfo
+	OutputFile string
+	SavedBytes int
 }
 
 type HistoryEntry struct {
@@ -75,6 +81,45 @@ func (d *dumpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func Send(opts RequestOptions) Result {
+	t0 := time.Now()
+	var (
+		dnsStart  time.Time
+		dnsDone   time.Time
+		connStart time.Time
+		connDone  time.Time
+		tlsStart  time.Time
+		tlsDone   time.Time
+		reqWrote  time.Time
+		firstByte time.Time
+	)
+
+	trace := &httptrace.ClientTrace{
+		DNSStart: func(_ httptrace.DNSStartInfo) {
+			dnsStart = time.Now()
+		},
+		DNSDone: func(_ httptrace.DNSDoneInfo) {
+			dnsDone = time.Now()
+		},
+		ConnectStart: func(_, _ string) {
+			connStart = time.Now()
+		},
+		ConnectDone: func(_, _ string, _ error) {
+			connDone = time.Now()
+		},
+		TLSHandshakeStart: func() {
+			tlsStart = time.Now()
+		},
+		TLSHandshakeDone: func(_ tls.ConnectionState, _ error) {
+			tlsDone = time.Now()
+		},
+		WroteRequest: func(_ httptrace.WroteRequestInfo) {
+			reqWrote = time.Now()
+		},
+		GotFirstResponseByte: func() {
+			firstByte = time.Now()
+		},
+	}
+
 	var reqBody io.Reader
 	var history []HistoryEntry
 	var multipartContentType string
@@ -129,13 +174,19 @@ func Send(opts RequestOptions) Result {
 			multipartContentType = w.FormDataContentType()
 		} else {
 			form := url.Values{}
+			hasFormKey := false
 			for _, line := range strings.Split(opts.Body, "\n") {
 				parts := strings.SplitN(line, "=", 2)
 				if len(parts) == 2 {
 					form.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+					hasFormKey = true
 				}
 			}
-			reqBody = strings.NewReader(form.Encode())
+			if hasFormKey {
+				reqBody = strings.NewReader(form.Encode())
+			} else {
+				reqBody = strings.NewReader(opts.Body)
+			}
 		}
 	}
 
@@ -143,6 +194,7 @@ func Send(opts RequestOptions) Result {
 	if err != nil {
 		return Result{Err: err}
 	}
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 
 	for _, line := range strings.Split(opts.Headers, "\n") {
 		parts := strings.SplitN(line, ":", 2)
@@ -222,11 +274,60 @@ func Send(opts RequestOptions) Result {
 
 	res, err := httpClient.Do(req)
 	if err != nil {
-		return Result{Err: err}
+		tEnd := time.Now()
+		return Result{
+			Err: err,
+			Timing: TimingInfo{
+				Total: tEnd.Sub(t0),
+			},
+		}
 	}
 	defer res.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(res.Body)
+	tEnd := time.Now()
+	if firstByte.IsZero() || firstByte.After(tEnd) {
+		firstByte = tEnd
+	}
+
+	timing := TimingInfo{
+		Total: tEnd.Sub(t0),
+	}
+	if !dnsDone.IsZero() && !dnsStart.IsZero() {
+		timing.DNSLookup = dnsDone.Sub(dnsStart)
+		timing.NameLookup = dnsDone.Sub(t0)
+	}
+	if !connDone.IsZero() && !connStart.IsZero() {
+		timing.TCPConnect = connDone.Sub(connStart)
+		timing.Connect = connDone.Sub(t0)
+	}
+	if !tlsDone.IsZero() && !tlsStart.IsZero() {
+		timing.TLSHandshake = tlsDone.Sub(tlsStart)
+		timing.AppConnect = tlsDone.Sub(t0)
+	}
+	if !firstByte.IsZero() {
+		timing.StartTransfer = firstByte.Sub(t0)
+		startWait := reqWrote
+		if startWait.IsZero() {
+			if !tlsDone.IsZero() {
+				startWait = tlsDone
+			} else if !connDone.IsZero() {
+				startWait = connDone
+			} else {
+				startWait = t0
+			}
+		}
+		timing.ServerProcessing = firstByte.Sub(startWait)
+		if timing.ServerProcessing < 0 {
+			timing.ServerProcessing = 0
+		}
+		timing.ContentTransfer = tEnd.Sub(firstByte)
+		if timing.ContentTransfer < 0 {
+			timing.ContentTransfer = 0
+		}
+	}
+
+	dt.ChainDump.WriteString("\n" + timing.Breakdown())
 
 	history = append(history, HistoryEntry{
 		Method: res.Request.Method,
@@ -234,10 +335,31 @@ func Send(opts RequestOptions) Result {
 		Status: res.Status,
 	})
 
+	var savedBytes int
+	if opts.OutputFile != "" {
+		if err := os.WriteFile(opts.OutputFile, bodyBytes, 0644); err != nil {
+			return Result{
+				Status:     res.Status,
+				Body:       string(bodyBytes),
+				BodyBytes:  bodyBytes,
+				FullDump:   dt.ChainDump.String(),
+				History:    dt.History,
+				Timing:     timing,
+				OutputFile: opts.OutputFile,
+				Err:        fmt.Errorf("failed to save output file '%s': %w", opts.OutputFile, err),
+			}
+		}
+		savedBytes = len(bodyBytes)
+	}
+
 	return Result{
-		Status:   res.Status,
-		Body:     string(bodyBytes),
-		FullDump: dt.ChainDump.String(),
-		History:  dt.History,
+		Status:     res.Status,
+		Body:       string(bodyBytes),
+		BodyBytes:  bodyBytes,
+		FullDump:   dt.ChainDump.String(),
+		History:    dt.History,
+		Timing:     timing,
+		OutputFile: opts.OutputFile,
+		SavedBytes: savedBytes,
 	}
 }

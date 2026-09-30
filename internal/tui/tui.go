@@ -96,6 +96,29 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 	tInput.Prompt = "  Seconds: "
 	tInput.CharLimit = 16
 
+	srcInput := textinput.New()
+	srcInput.Placeholder = "Search query..."
+	srcInput.Prompt = "/ "
+	srcInput.CharLimit = 128
+
+	fInput := textinput.New()
+	fInput.Placeholder = ".data.users[0].name"
+	fInput.Prompt = "JSON Path: "
+	fInput.CharLimit = 128
+
+	bBearerInput := textinput.New()
+	bBearerInput.Placeholder = "eyJhbGciOiJIUzI1NiIs..."
+	bBearerInput.Prompt = "  Token: "
+	bBearerInput.CharLimit = 1024
+	if initialBearer := extractBearerToken(headerStr); initialBearer != "" {
+		bBearerInput.SetValue(initialBearer)
+	}
+
+	oInput := textinput.New()
+	oInput.Placeholder = "output.json (empty for none)"
+	oInput.Prompt = "  File: "
+	oInput.CharLimit = 256
+
 	return Model{
 		methodInput:  m,
 		urlInput:     u,
@@ -104,6 +127,10 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 		saveInput:    sInput,
 		proxyInput:   pInput,
 		timeoutInput: tInput,
+		searchInput:  srcInput,
+		filterInput:  fInput,
+		bearerInput:  bBearerInput,
+		outputInput:  oInput,
 		focusIndex:   1,
 		format:       format,
 		location:     location,

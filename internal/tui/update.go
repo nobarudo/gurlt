@@ -41,6 +41,9 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 		contentWidth = 1
 	}
 	fixedVerticalLines := 15
+	if m.timing.Total > 0 {
+		fixedVerticalLines = 18
+	}
 
 	// 入力欄に使える余りスペースを計算し、2つのテキストエリア（Headers/Params）で割る
 	availableHeight := m.terminalHeight - fixedVerticalLines
@@ -92,9 +95,33 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 	m.isLoading = false
 	m.responseStatus = msg.status
+	m.timing = msg.timing
+	m.lastBodyBytes = msg.bodyBytes
+	m.isBinaryResponse = isBinaryContent(msg.bodyBytes)
+
 	if msg.err == nil {
-		m.normalContent, m.rawContent = msg.body, msg.rawContent
+		if m.isBinaryResponse {
+			sizeStr := formatBytes(len(msg.bodyBytes))
+			binDesc := fmt.Sprintf("[Binary data: %s (%d bytes)]", sizeStr, len(msg.bodyBytes))
+			if msg.outputFile != "" {
+				binDesc += fmt.Sprintf("\nSaved to: %s", msg.outputFile)
+			}
+			m.normalContent = binDesc
+			m.rawContent = msg.rawContent
+		} else {
+			m.normalContent, m.rawContent = msg.body, msg.rawContent
+		}
 		m.history = msg.history
+
+		if m.timing.Total > 0 && m.terminalHeight > 0 {
+			availableHeight := m.terminalHeight - 18
+			textAreaHeight := availableHeight / 2
+			if textAreaHeight < 5 {
+				textAreaHeight = 5
+			}
+			m.headerInput.SetHeight(textAreaHeight)
+			m.bodyInput.SetHeight(textAreaHeight)
+		}
 
 		// ログ保存
 		if m.logFile != "" {
@@ -107,17 +134,30 @@ func (m Model) handleResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 				m.footerMsg = successStyle.Render(fmt.Sprintf(" [📝 Logged to %s]", m.logFile))
 			}
 		}
+
+		if msg.outputFile != "" {
+			saveInfo := successStyle.Render(fmt.Sprintf(" [💾 Saved to %s (%s)]", msg.outputFile, formatBytes(msg.savedBytes)))
+			if m.footerMsg != "" {
+				m.footerMsg += saveInfo
+			} else {
+				m.footerMsg = saveInfo
+			}
+		}
 	} else {
 		m.normalContent = errorStyle.Render(fmt.Sprintf("Error: %v", msg.err))
+		if msg.outputFile != "" {
+			m.footerMsg = errorStyle.Render(fmt.Sprintf(" [❌ Save failed: %v]", msg.err))
+		}
 	}
 
-	if m.showRawView {
-		m.responseView.SetContent(m.rawContent)
+	if m.jsonPathQuery != "" && msg.err == nil {
+		_ = m.applyJSONFilter()
+	} else if m.showRawView {
+		m.updateSearch(false)
 	} else {
-		m.responseView.SetContent(m.normalContent)
+		wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
+		m.responseView.SetContent(wrappedRaw)
 	}
-	wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
-	m.responseView.SetContent(wrappedRaw)
 	m.responseView.GotoTop()
 
 	return m, nil
@@ -139,8 +179,17 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			filename := strings.TrimSpace(m.saveInput.Value())
 			if filename != "" {
-				os.WriteFile(filename, []byte(m.rawContent), 0644)
-				m.footerMsg = successStyle.Render(" [✅ Saved!]")
+				var dataToWrite []byte
+				if m.isBinaryResponse && len(m.lastBodyBytes) > 0 && m.filteredContent == "" {
+					dataToWrite = m.lastBodyBytes
+				} else {
+					dataToWrite = []byte(m.activeContent())
+				}
+				if err := os.WriteFile(filename, dataToWrite, 0644); err != nil {
+					m.footerMsg = errorStyle.Render(fmt.Sprintf(" [❌ %v]", err))
+				} else {
+					m.footerMsg = successStyle.Render(" [✅ Saved!]")
+				}
 				m.isSaving = false
 				m.saveInput.Blur()
 				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
@@ -154,20 +203,108 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 2. オプション設定モーダル中のキーボード操作
+	// 2. 検索モード中のキーボード操作
+	if m.isSearching {
+		var cmd tea.Cmd
+		switch msg.String() {
+		case "esc":
+			m.isSearching = false
+			m.searchInput.Blur()
+			return m, nil
+		case "ctrl+c":
+			m.isSearching = false
+			m.searchInput.Blur()
+			m.searchQuery = ""
+			m.searchInput.SetValue("")
+			m.updateSearch(false)
+			return m, nil
+		case "enter", "down":
+			if len(m.searchMatches) > 0 {
+				m.searchMatchIndex++
+				m.updateSearch(true)
+			}
+			return m, nil
+		case "shift+tab", "up":
+			if len(m.searchMatches) > 0 {
+				m.searchMatchIndex--
+				m.updateSearch(true)
+			}
+			return m, nil
+		default:
+			prevVal := m.searchInput.Value()
+			m.searchInput, cmd = m.searchInput.Update(msg)
+			if m.searchInput.Value() != prevVal {
+				m.searchQuery = m.searchInput.Value()
+				m.searchMatchIndex = 0
+				m.updateSearch(true)
+			}
+			return m, cmd
+		}
+	}
+
+	// 3. JSON フィルタモード中のキーボード操作
+	if m.isFiltering {
+		var cmd tea.Cmd
+		switch msg.String() {
+		case "esc", "ctrl+c":
+			m.isFiltering = false
+			m.filterInput.Blur()
+			m.filterInput.SetValue(m.jsonPathQuery)
+			return m, nil
+		case "enter":
+			m.isFiltering = false
+			m.filterInput.Blur()
+			m.jsonPathQuery = strings.TrimSpace(m.filterInput.Value())
+			if err := m.applyJSONFilter(); err != nil {
+				m.footerMsg = errorStyle.Render(fmt.Sprintf(" [❌ %v]", err))
+				return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+			}
+			if m.jsonPathQuery != "" {
+				m.footerMsg = successStyle.Render(" [🔍 Filtered!]")
+			} else {
+				m.footerMsg = infoStyle.Render(" [Filter Cleared]")
+			}
+			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+		default:
+			m.filterInput, cmd = m.filterInput.Update(msg)
+			return m, cmd
+		}
+	}
+
+	// 3. オプション設定モーダル中のキーボード操作
 	if m.showOptionsModal {
 		return m.handleOptionsModalKeyMsg(msg)
 	}
 
-	// 3. グローバルショートカットの処理
+	// 4. グローバルショートカットの処理
 	switch msg.String() {
-	case "ctrl+c", "esc":
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		if m.showRawView {
+			if m.searchQuery != "" {
+				m.searchQuery = ""
+				m.searchInput.SetValue("")
+				m.updateSearch(false)
+				return m, nil
+			}
+			if m.jsonPathQuery != "" {
+				m.jsonPathQuery = ""
+				m.filterInput.SetValue("")
+				m.applyJSONFilter()
+				m.footerMsg = infoStyle.Render(" [Filter Cleared]")
+				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
+			}
+		}
 		return m, tea.Quit
 	case "ctrl+o":
 		m.showOptionsModal = true
 		m.optionsCursor = 0
 		m.proxyInput.Blur()
 		m.timeoutInput.Blur()
+		m.bearerInput.Blur()
+		m.outputInput.Blur()
+		m.bearerInput.SetValue(extractBearerToken(m.headerInput.Value()))
 		return m, nil
 	case "tab":
 		if m.focusIndex == 2 {
@@ -196,15 +333,42 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, updateFocus(&m)
 		}
 		return m, nil
+	case "/":
+		if m.showRawView {
+			m.isSearching = true
+			m.searchInput.Focus()
+			return m, textinput.Blink
+		}
+	case "p", "f":
+		if m.showRawView {
+			m.isFiltering = true
+			m.filterInput.Focus()
+			return m, textinput.Blink
+		}
+	case "n":
+		if m.showRawView && m.searchQuery != "" && len(m.searchMatches) > 0 {
+			m.searchMatchIndex++
+			m.updateSearch(true)
+			return m, nil
+		}
+	case "N":
+		if m.showRawView && m.searchQuery != "" && len(m.searchMatches) > 0 {
+			m.searchMatchIndex--
+			m.updateSearch(true)
+			return m, nil
+		}
 	case "c":
-		if m.showRawView && m.rawContent != "" {
-			clipboard.WriteAll(m.rawContent)
+		if m.showRawView && m.activeContent() != "" {
+			clipboard.WriteAll(m.activeContent())
 			m.footerMsg = successStyle.Render(" [✅ Copied!]")
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 		}
 	case "s":
 		if m.showRawView {
 			m.isSaving = true
+			if m.saveInput.Value() == "" && strings.TrimSpace(m.outputInput.Value()) != "" {
+				m.saveInput.SetValue(strings.TrimSpace(m.outputInput.Value()))
+			}
 			m.saveInput.Focus()
 			return m, textinput.Blink
 		}
@@ -228,9 +392,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showRawView = !m.showRawView
 		m.footerMsg = ""
 		m.isSaving = false
+		m.isSearching = false
 		if m.showRawView {
-			wrappedRaw := lipgloss.NewStyle().Width(m.responseView.Width).Render(m.rawContent)
-			m.responseView.SetContent(wrappedRaw)
+			m.updateSearch(false)
 		}
 		m.responseView.GotoTop()
 		return m, nil
@@ -239,6 +403,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.isLoading = true
 			m.footerMsg = ""
 			m.responseView.SetContent(infoStyle.Render("⏳ Loading..."))
+			outputFile := strings.TrimSpace(m.outputInput.Value())
 			opts := client.RequestOptions{
 				Method:         m.methodInput.Value(),
 				URL:            m.urlInput.Value(),
@@ -250,6 +415,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				Proxy:          strings.TrimSpace(m.proxyInput.Value()),
 				MaxTime:        m.maxTime,
 				ConnectTimeout: m.connectTimeout,
+				OutputFile:     outputFile,
 			}
 			return m, sendRequest(opts, m.BuildCurlCmd())
 		}
@@ -260,7 +426,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.footerMsg = successStyle.Render(" [✅ Copied!]")
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 		} else {
-			clipboard.WriteAll(m.rawContent)
+			clipboard.WriteAll(m.activeContent())
 			m.footerMsg = successStyle.Render(" [✅ Raw Copied!]")
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
 		}
@@ -341,25 +507,59 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 3. モーダル内の項目選択モードの処理
+	// 3. Bearer Token入力欄を編集中（Focused）の場合の処理
+	if m.bearerInput.Focused() {
+		switch msg.String() {
+		case "esc", "enter":
+			m.bearerInput.Blur()
+			token := strings.TrimSpace(m.bearerInput.Value())
+			m.headerInput.SetValue(setOrUpdateBearerHeader(m.headerInput.Value(), token))
+			return m, nil
+		case "ctrl+c":
+			return m, tea.Quit
+		default:
+			var cmd tea.Cmd
+			m.bearerInput, cmd = m.bearerInput.Update(msg)
+			return m, cmd
+		}
+	}
+
+	// 4. Output File入力欄を編集中（Focused）の場合の処理
+	if m.outputInput.Focused() {
+		switch msg.String() {
+		case "esc", "enter":
+			m.outputInput.Blur()
+			return m, nil
+		case "ctrl+c":
+			return m, tea.Quit
+		default:
+			var cmd tea.Cmd
+			m.outputInput, cmd = m.outputInput.Update(msg)
+			return m, cmd
+		}
+	}
+
+	// 5. モーダル内の項目選択モードの処理
 	switch msg.String() {
 	case "esc", "ctrl+o":
 		m.showOptionsModal = false
 		m.proxyInput.Blur()
 		m.timeoutInput.Blur()
+		m.bearerInput.Blur()
+		m.outputInput.Blur()
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
 	case "j", "down", "tab":
 		m.optionsCursor++
-		if m.optionsCursor > 4 {
+		if m.optionsCursor > 6 {
 			m.optionsCursor = 0
 		}
 		return m, nil
 	case "k", "up", "shift+tab":
 		m.optionsCursor--
 		if m.optionsCursor < 0 {
-			m.optionsCursor = 4
+			m.optionsCursor = 6
 		}
 		return m, nil
 	case " ", "enter":
@@ -375,6 +575,12 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		case 4:
 			cmd := m.timeoutInput.Focus()
+			return m, cmd
+		case 5:
+			cmd := m.bearerInput.Focus()
+			return m, cmd
+		case 6:
+			cmd := m.outputInput.Focus()
 			return m, cmd
 		}
 		return m, nil

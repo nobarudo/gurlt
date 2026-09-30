@@ -21,9 +21,19 @@ go install github.com/nobarudo/gurlt@latest
 gurlt https://example.com/
 ```
 
-**2. With Flags (-X, -H, -d, -F, -u, -A, -L, --json, -m, -k, -x)**
+**2. With Flags (-X, -H, -d, -F, -u, -A, -L, --json, -m, -k, -x, -q/--jq, --bearer)**
 
 ```bash
+# Direct Bearer authentication (--bearer or --oauth2-bearer)
+gurlt --bearer "eyJhbGciOi..." https://api.example.com/me
+
+# JSON response path filtering (jq / gjson equivalent)
+gurlt -q ".users[0].name" https://api.example.com/users
+
+# Read payload from file (-d @file or --json @file)
+gurlt -d @payload.json https://httpbin.org/post
+gurlt -d @query.graphql https://api.github.com/graphql
+
 # JSON request shorthand (automatically sets method to POST, and adds JSON headers)
 gurlt --json '{"name":"alice","age":30}' https://httpbin.org/post
 
@@ -35,6 +45,10 @@ gurlt -m 10 --connect-timeout 3.5 https://httpbin.org/delay/2
 
 # Insecure SSL connections and Proxy
 gurlt -k -x http://localhost:8080 https://localhost:8443/
+
+# Save response body directly to a file (-o, --output)
+gurlt -o download.png https://httpbin.org/image/png
+gurlt -o response.json https://httpbin.org/json
 
 # Standard cURL flags
 gurlt -X POST -H "Authorization: Bearer token" -d '{"test":123}' https://httpbin.org/post
@@ -57,7 +71,18 @@ Automatically save request and response dumps to a file.
 gurlt --log audit.log https://example.com
 ```
 
-**5. Options Modal (`Ctrl+O`)**
+**5. Network Latency Breakdown (cURL -w equivalent)**
+
+When a request completes, `gurlt` automatically measures and displays a visual latency timeline bar and phase breakdown in the main view:
+- **DNS Lookup**: Resolution time (`time_namelookup`)
+- **TCP Connect**: Connection establishment time (`time_connect`)
+- **TLS Handshake**: SSL negotiation time (`time_appconnect`)
+- **Server Processing / TTFB**: Time from request send until first byte received (`time_starttransfer`)
+- **Content Transfer**: Time spent reading response body (`time_total`)
+
+Detailed `curl -w` metrics are also included in the Raw View (`Ctrl+R`) and saved in `--log` files.
+
+**6. Options Modal (`Ctrl+O`)**
 
 Press `Ctrl+O` from the main view to open the options modal and configure advanced cURL settings:
 - `-k / --insecure`: Ignore SSL certificate verification errors
@@ -65,9 +90,44 @@ Press `Ctrl+O` from the main view to open the options modal and configure advanc
 - `-L / --location`: Follow HTTP redirects
 - `-x`: Specify HTTP/HTTPS proxy URL
 - `-m`: Specify transfer timeout in seconds
-- View current configuration (`--format`, `--connect-timeout`, `--log`, and extra CLI arguments)
+- `--bearer`: Configure OAuth 2.0 / Bearer token (syncs directly with Authorization headers)
+- `-o`: Specify output file to automatically save response body
+- View current configuration (`--format`, `--connect-timeout`, masked `--bearer`, `-o`, `--log`, latency metrics, and extra CLI arguments)
 
 Changes made in the modal are immediately reflected in the live `💻 cURL:` preview and copied with `Ctrl+A`.
+
+**7. JSON Path Filtering (jq / gjson equivalent)**
+
+Filter and drill down into JSON responses via CLI or interactively in Raw View:
+- **CLI Flags**: `-q, --query <path>` or `--jq <path>` (e.g. `-q ".data.users[*].name"`)
+- **Interactive in Raw View (`Ctrl+R`)**: Press `p` or `f` to enter a JSON Path query.
+- Supports dot notation (`.user.name`), array indexing (`[0]`), negative indexing (`[-1]`), array wildcards (`[*]`), bracketed keys (`['content-type']`), and length helper (`.items.length`).
+- Filtered results can be searched (`/`), copied (`c` or `Ctrl+A`), or saved to disk (`s`).
+
+**8. Load Payload from File (`-d @<file>`, `--json @<file>`)**
+
+Load large payloads, JSON bodies, or GraphQL queries directly from files:
+- Use `-d @<file>`, `--data @<file>`, `--data-binary @<file>`, or `--json @<file>`.
+- `gurlt` reads the file content from the filesystem and expands it directly into the Body text area.
+- If the content is valid JSON, it automatically enables JSON format mode and pretty-prints the body.
+- Supports relative paths, absolute paths, quoted paths (`-d @"my file.json"`), and home directory expansion (`-d @~/payload.json`).
+- If the file does not exist, an error is reported immediately and execution halts safely.
+- Literal `@` can be sent without file expansion using `--data-raw @literal`.
+
+**9. Bearer Authentication (`--bearer <token>`)**
+
+Directly specify Bearer tokens without manually formatting `Authorization: Bearer <token>`:
+- **CLI Flags**: `--bearer <token>` or `--oauth2-bearer <token>` (automatically generates header and populates Options Modal).
+- **Options Modal (`Ctrl+O`)**: Press Space on "Bearer Token" to enter or edit tokens. Updates immediately sync with the Headers textarea and the live cURL preview.
+- Clearing the token in the modal cleanly removes the header.
+
+**10. Save Response to File (`-o, --output <file>`)**
+
+Automatically save response body directly to disk:
+- **CLI Flag**: `-o, --output <filename>` (e.g. `gurlt -o download.png https://example.com/image.png`).
+- **Options Modal (`Ctrl+O`)**: View and edit the output file directly in the modal. Syncs with the live cURL preview.
+- **Binary Data & Viewport Protection**: When receiving binary payloads (images, PDFs, ZIPs), `gurlt` prevents terminal and viewport corruption by safely writing intact bytes to the file while displaying a formatted descriptor `[Binary data: <size>]` in the TUI.
+- **Visual Notification**: Shows a confirmation badge `[💾 Saved to <filename> (<size>)]` upon successful transfer.
 
 ## ⌨️ Keybindings
 
@@ -90,16 +150,21 @@ Changes made in the modal are immediately reflected in the live `💻 cURL:` pre
 | Key | Action |
 | --- | --- |
 | `j` / `k` (or `↓` / `↑`, `Tab`) | Move item |
-| `Space` | Toggle checkbox / Edit Proxy URL |
-| `Enter` / `Esc` | Finish editing Proxy URL |
+| `Space` | Toggle checkbox / Edit text field (Proxy, Timeout, Bearer, Output File) |
+| `Enter` / `Esc` | Finish editing text field |
 | `Esc` / `Ctrl+O` | Close Options Modal |
 
 ### Raw View (`Ctrl+R`)
 
 | Key | Action |
 | --- | --- |
-| `Ctrl+A` / `C` | Copy Raw Dump |
-| `S` | Save Raw Dump to file |
+| `/` | Incremental search across raw response & dump |
+| `Enter` / `n` | Jump to next search match |
+| `Shift+Tab` / `N` | Jump to previous search match |
+| `p` / `f` | Filter JSON response body with JSONPath (e.g. `.items[0].id`, `[*]`, `.length`) |
+| `Esc` | Close input bar / Clear search highlight & filter |
+| `Ctrl+A` / `c` | Copy Raw Dump (or filtered JSON if filter active) |
+| `s` | Save Raw Dump (or filtered JSON) to file |
 | `Ctrl+R` | Back to Main View |
 
 ## 📄 License

@@ -44,11 +44,44 @@ type Model struct {
 	connectTimeout   float64
 	timeoutInput     textinput.Model
 	optionsCursor    int
+	timing           client.TimingInfo
+	searchInput      textinput.Model
+	isSearching      bool
+	searchQuery      string
+	searchMatches    []int
+	searchMatchIndex int
+	filterInput      textinput.Model
+	isFiltering      bool
+	jsonPathQuery    string
+	filteredContent  string
+	bearerInput      textinput.Model
+	outputInput      textinput.Model
+	lastBodyBytes    []byte
+	isBinaryResponse bool
+}
+
+// SetBearer sets the bearer token, updates bearerInput, and synchronizes the Authorization header
+func (m *Model) SetBearer(token string) {
+	m.bearerInput.SetValue(token)
+	m.headerInput.SetValue(setOrUpdateBearerHeader(m.headerInput.Value(), token))
+}
+
+// SetOutputFile sets the output file path for saving response body
+func (m *Model) SetOutputFile(file string) {
+	m.outputInput.SetValue(file)
+	m.saveInput.SetValue(file)
+}
+
+// SetJSONPathQuery sets the initial JSON path filter query
+func (m *Model) SetJSONPathQuery(q string) {
+	m.jsonPathQuery = q
+	m.filterInput.SetValue(q)
 }
 
 // BuildCurlCmd は現在の設定値（URL, Header, Body, 各種オプション）から完全なcURLコマンド文字列を生成します
 func (m Model) BuildCurlCmd() string {
 	proxy := strings.TrimSpace(m.proxyInput.Value())
+	outputFile := strings.TrimSpace(m.outputInput.Value())
 	cmd := curl.Build(
 		m.methodInput.Value(),
 		m.urlInput.Value(),
@@ -61,6 +94,7 @@ func (m Model) BuildCurlCmd() string {
 		proxy,
 		m.maxTime,
 		m.connectTimeout,
+		outputFile,
 	)
 	if m.extraArgs != "" {
 		cmd += " " + m.extraArgs
@@ -97,3 +131,4 @@ func (m *Model) SetMaxTime(sec float64) {
 func (m *Model) SetConnectTimeout(sec float64) {
 	m.connectTimeout = sec
 }
+
