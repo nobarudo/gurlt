@@ -18,6 +18,7 @@ func TestBuild(t *testing.T) {
 		proxy          string
 		maxTime        float64
 		connectTimeout float64
+		outputFile     string
 		want           string
 	}{
 		{
@@ -33,10 +34,11 @@ func TestBuild(t *testing.T) {
 			proxy:          "",
 			maxTime:        0,
 			connectTimeout: 0,
+			outputFile:     "",
 			want:           "curl -X GET 'https://example.com/api'",
 		},
 		{
-			name:           "all options enabled with timeout",
+			name:           "all options enabled with timeout and output file",
 			method:         "POST",
 			reqUrl:         "https://example.com/login",
 			headers:        "Content-Type: application/json",
@@ -48,7 +50,8 @@ func TestBuild(t *testing.T) {
 			proxy:          "http://proxy.example.com:8080",
 			maxTime:        10.5,
 			connectTimeout: 3,
-			want:           "curl -X POST 'https://example.com/login' -L -k -v -x 'http://proxy.example.com:8080' -m 10.5 --connect-timeout 3 -H 'Content-Type: application/json' -d '{\"user\":\"test\"}'",
+			outputFile:     "response.json",
+			want:           "curl -X POST 'https://example.com/login' -L -k -v -x 'http://proxy.example.com:8080' -m 10.5 --connect-timeout 3 -o 'response.json' -H 'Content-Type: application/json' -d '{\"user\":\"test\"}'",
 		},
 		{
 			name:           "multipart form request",
@@ -63,13 +66,14 @@ func TestBuild(t *testing.T) {
 			proxy:          "",
 			maxTime:        0,
 			connectTimeout: 0,
+			outputFile:     "",
 			want:           "curl -X POST 'https://example.com/upload' -H 'Authorization: Bearer token' -F 'name=alice' -F 'file=@test.png'",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Build(tt.method, tt.reqUrl, tt.headers, tt.body, tt.format, tt.location, tt.insecure, tt.verbose, tt.proxy, tt.maxTime, tt.connectTimeout)
+			got := Build(tt.method, tt.reqUrl, tt.headers, tt.body, tt.format, tt.location, tt.insecure, tt.verbose, tt.proxy, tt.maxTime, tt.connectTimeout, tt.outputFile)
 			if got != tt.want {
 				t.Errorf("Build() = %v, want %v", got, tt.want)
 			}
@@ -233,5 +237,27 @@ func TestParseWithBearer(t *testing.T) {
 	}
 	if optsOAuth.Bearer != "oauth-456" {
 		t.Errorf("Bearer = %q, want oauth-456", optsOAuth.Bearer)
+	}
+}
+
+func TestParseWithOutput(t *testing.T) {
+	// 1. -o filename
+	cmdStr := "curl 'https://api.example.com/download' -o 'image.png'"
+	opts, err := Parse(cmdStr)
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	if opts.OutputFile != "image.png" {
+		t.Errorf("OutputFile = %q, want image.png", opts.OutputFile)
+	}
+
+	// 2. --output filename
+	cmdStrLong := "curl 'https://api.example.com/data.json' --output output.json"
+	optsLong, err := Parse(cmdStrLong)
+	if err != nil {
+		t.Fatalf("Parse() returned error: %v", err)
+	}
+	if optsLong.OutputFile != "output.json" {
+		t.Errorf("OutputFile = %q, want output.json", optsLong.OutputFile)
 	}
 }

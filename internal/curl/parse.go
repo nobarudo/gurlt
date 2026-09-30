@@ -26,6 +26,7 @@ type ParsedOptions struct {
 	Forms          []string
 	IsDataRaw      bool
 	Bearer         string
+	OutputFile     string
 }
 
 // Parse はcURLコマンドの文字列を安全に分解し、必要な設定だけを抽出します
@@ -143,6 +144,11 @@ func Parse(cmdStr string) (*ParsedOptions, error) {
 			}
 		case "-w", "--write-out":
 			if i+1 < len(args) {
+				i++
+			}
+		case "-o", "--output":
+			if i+1 < len(args) {
+				opts.OutputFile = args[i+1]
 				i++
 			}
 		default:

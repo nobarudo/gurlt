@@ -32,6 +32,7 @@ var (
 	writeOut       string
 	jqQuery        string
 	bearerToken    string
+	outputFile     string
 )
 
 var rootCmd = &cobra.Command{
@@ -84,6 +85,9 @@ var rootCmd = &cobra.Command{
 				}
 				if parsedOpts.Bearer != "" && bearerToken == "" {
 					bearerToken = parsedOpts.Bearer
+				}
+				if parsedOpts.OutputFile != "" && outputFile == "" {
+					outputFile = parsedOpts.OutputFile
 				}
 				headers = append(headers, parsedOpts.Headers...)
 			}
@@ -210,6 +214,9 @@ var rootCmd = &cobra.Command{
 		if bearerToken != "" {
 			m.SetBearer(bearerToken)
 		}
+		if outputFile != "" {
+			m.SetOutputFile(outputFile)
+		}
 
 		p := tea.NewProgram(m, tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
@@ -245,6 +252,7 @@ func getExtraArgs(args []string) string {
 		"-x":                true, "--proxy": true,
 		"-w":                true, "--write-out": true,
 		"-q":                true, "--query": true, "--jq": true,
+		"-o":                true, "--output": true,
 		"--log":             true,
 	}
 	knownBoolFlags := map[string]bool{
@@ -318,5 +326,6 @@ func init() {
 	rootCmd.Flags().StringVarP(&writeOut, "write-out", "w", "", "Output format after completion (curl compatible)")
 	rootCmd.Flags().StringVarP(&jqQuery, "query", "q", "", "Filter JSON response using JSON path (e.g. .data.users[0])")
 	rootCmd.Flags().StringVar(&jqQuery, "jq", "", "Filter JSON response using JSON path (same as -q)")
+	rootCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write to file instead of stdout/display")
 	rootCmd.Flags().StringVar(&logFile, "log", "", "Append raw request and response to a file (e.g., --log audit.log)")
 }

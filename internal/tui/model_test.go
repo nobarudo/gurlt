@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -85,28 +88,42 @@ func TestOptionsModalNavigationAndProxyEdit(t *testing.T) {
 		t.Errorf("expected cursor at 5 (Bearer), got %d", m.optionsCursor)
 	}
 
-	// 5. さらに j を押せば 0 に循環
+	// 5. j を押して Output File (index 6) に移動
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = res.(Model)
+	if m.optionsCursor != 6 {
+		t.Errorf("expected cursor at 6 (Output File), got %d", m.optionsCursor)
+	}
+
+	// 6. さらに j を押せば 0 に循環
 	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m = res.(Model)
 	if m.optionsCursor != 0 {
 		t.Errorf("expected cursor to cycle back to 0, got %d", m.optionsCursor)
 	}
 
-	// 6. k を押して Bearer (index 5) に戻る
+	// 7. k を押して Output File (index 6) に戻る
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	m = res.(Model)
+	if m.optionsCursor != 6 {
+		t.Fatalf("expected cursor at 6, got %d", m.optionsCursor)
+	}
+
+	// 8. k を押して Bearer (index 5) に戻る
 	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 	m = res.(Model)
 	if m.optionsCursor != 5 {
 		t.Fatalf("expected cursor at 5, got %d", m.optionsCursor)
 	}
 
-	// 7. k を押して Timeout (index 4) に戻る
+	// 9. k を押して Timeout (index 4) に戻る
 	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 	m = res.(Model)
 	if m.optionsCursor != 4 {
 		t.Fatalf("expected cursor at 4, got %d", m.optionsCursor)
 	}
 
-	// 8. もう一度 k を押して Proxy (index 3) に戻る
+	// 10. もう一度 k を押して Proxy (index 3) に戻る
 	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 	m = res.(Model)
 	if m.optionsCursor != 3 {
@@ -240,6 +257,63 @@ func TestOptionsModalBearerEdit(t *testing.T) {
 		t.Errorf("expected new-token-xyz in headers, got %q", m.headerInput.Value())
 	}
 }
+
+func TestOptionsModalOutputEdit(t *testing.T) {
+	m := InitialModel("https://api.example.com", "GET", "", "", "form", false, "", "")
+
+	// 1. ctrl+o でモーダルを開く
+	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	m = res.(Model)
+
+	// 2. index 6 (Output File) まで移動
+	for i := 0; i < 6; i++ {
+		res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		m = res.(Model)
+	}
+	if m.optionsCursor != 6 {
+		t.Fatalf("expected cursor at 6, got %d", m.optionsCursor)
+	}
+
+	// Space で編集開始
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = res.(Model)
+	if !m.outputInput.Focused() {
+		t.Fatalf("outputInput should be focused")
+	}
+
+	// "out.json" と入力
+	for _, r := range "out.json" {
+		res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = res.(Model)
+	}
+
+	// Enter で確定
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = res.(Model)
+	if m.outputInput.Focused() {
+		t.Fatalf("outputInput should blur after Enter")
+	}
+	if m.outputInput.Value() != "out.json" {
+		t.Errorf("expected outputInput value 'out.json', got %q", m.outputInput.Value())
+	}
+
+	// cURLプレビューに -o 'out.json' が含まれること
+	cmd := m.BuildCurlCmd()
+	if !strings.Contains(cmd, "-o 'out.json'") {
+		t.Errorf("expected -o 'out.json' in cmd preview, got %s", cmd)
+	}
+
+	// SetOutputFile で直接上書きテスト
+	m.SetOutputFile("new.png")
+	if m.outputInput.Value() != "new.png" {
+		t.Errorf("expected outputInput value 'new.png', got %q", m.outputInput.Value())
+	}
+	cmd = m.BuildCurlCmd()
+	if !strings.Contains(cmd, "-o 'new.png'") {
+		t.Errorf("expected -o 'new.png' in cmd preview, got %s", cmd)
+	}
+}
+
 
 func TestInitialModelJSONPrettify(t *testing.T) {
 	rawJSON := `{"foo":"bar","num":123}`
@@ -457,6 +531,54 @@ func TestRawViewJSONFiltering(t *testing.T) {
 		t.Errorf("expected activeContent to be rawDump after clearing filter")
 	}
 }
+
+func TestBinaryResponseAndSaving(t *testing.T) {
+	m := InitialModel("https://api.example.com", "GET", "", "", "form", false, "", "")
+
+	binaryPayload := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D}
+	resMsg := responseMsg{
+		status:     "200 OK",
+		body:       string(binaryPayload),
+		bodyBytes:  binaryPayload,
+		outputFile: "download.png",
+		savedBytes: len(binaryPayload),
+		rawContent: "=== cURL ===\ncurl https://api.example.com\n\n=== Response ===\nHTTP/1.1 200 OK\r\n\r\n[Binary data: 12 B (12 bytes)]\nSaved to: download.png\n\n⏱️  Latency: 5ms",
+	}
+
+	res, _ := m.Update(resMsg)
+	m = res.(Model)
+
+	if !m.isBinaryResponse {
+		t.Fatalf("expected isBinaryResponse to be true")
+	}
+	if !strings.Contains(m.normalContent, "[Binary data: 12 B (12 bytes)]") {
+		t.Errorf("expected binary descriptor in normalContent, got %q", m.normalContent)
+	}
+	if !strings.Contains(m.normalContent, "Saved to: download.png") {
+		t.Errorf("expected Saved to: download.png in normalContent, got %q", m.normalContent)
+	}
+	if !strings.Contains(m.footerMsg, "Saved to download.png") {
+		t.Errorf("expected footerMsg to contain save confirmation, got %q", m.footerMsg)
+	}
+
+	// Test saving binary content from raw view
+	tmpFile := filepath.Join(t.TempDir(), "test_saved.png")
+	m.showRawView = true
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = res.(Model)
+	m.saveInput.SetValue(tmpFile)
+	res, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = res.(Model)
+
+	savedData, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("failed to read saved file: %v", err)
+	}
+	if !bytes.Equal(savedData, binaryPayload) {
+		t.Fatalf("saved data does not match original binary payload")
+	}
+}
+
 
 
 

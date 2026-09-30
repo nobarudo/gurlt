@@ -8,7 +8,7 @@ import (
 )
 
 // Build は入力された値からcURLコマンドの文字列を生成します
-func Build(method, reqUrl, headers, body, format string, location, insecure, verbose bool, proxy string, maxTime, connectTimeout float64) string {
+func Build(method, reqUrl, headers, body, format string, location, insecure, verbose bool, proxy string, maxTime, connectTimeout float64, outputFile string) string {
 	cmd := fmt.Sprintf("curl -X %s '%s'", method, reqUrl)
 	if location {
 		cmd += " -L"
@@ -27,6 +27,9 @@ func Build(method, reqUrl, headers, body, format string, location, insecure, ver
 	}
 	if connectTimeout > 0 {
 		cmd += fmt.Sprintf(" --connect-timeout %s", strconv.FormatFloat(connectTimeout, 'f', -1, 64))
+	}
+	if outputFile != "" {
+		cmd += fmt.Sprintf(" -o '%s'", outputFile)
 	}
 	lines := strings.Split(headers, "\n")
 	for _, line := range lines {

@@ -30,16 +30,20 @@ type RequestOptions struct {
 	Proxy          string
 	MaxTime        float64
 	ConnectTimeout float64
+	OutputFile     string
 }
 
 // Result はHTTPリクエストの結果を格納する構造体です
 type Result struct {
-	Status   string
-	Body     string
-	FullDump string
-	Err      error
-	History  []HistoryEntry
-	Timing   TimingInfo
+	Status     string
+	Body       string
+	BodyBytes  []byte
+	FullDump   string
+	Err        error
+	History    []HistoryEntry
+	Timing     TimingInfo
+	OutputFile string
+	SavedBytes int
 }
 
 type HistoryEntry struct {
@@ -331,11 +335,31 @@ func Send(opts RequestOptions) Result {
 		Status: res.Status,
 	})
 
+	var savedBytes int
+	if opts.OutputFile != "" {
+		if err := os.WriteFile(opts.OutputFile, bodyBytes, 0644); err != nil {
+			return Result{
+				Status:     res.Status,
+				Body:       string(bodyBytes),
+				BodyBytes:  bodyBytes,
+				FullDump:   dt.ChainDump.String(),
+				History:    dt.History,
+				Timing:     timing,
+				OutputFile: opts.OutputFile,
+				Err:        fmt.Errorf("failed to save output file '%s': %w", opts.OutputFile, err),
+			}
+		}
+		savedBytes = len(bodyBytes)
+	}
+
 	return Result{
-		Status:   res.Status,
-		Body:     string(bodyBytes),
-		FullDump: dt.ChainDump.String(),
-		History:  dt.History,
-		Timing:   timing,
+		Status:     res.Status,
+		Body:       string(bodyBytes),
+		BodyBytes:  bodyBytes,
+		FullDump:   dt.ChainDump.String(),
+		History:    dt.History,
+		Timing:     timing,
+		OutputFile: opts.OutputFile,
+		SavedBytes: savedBytes,
 	}
 }

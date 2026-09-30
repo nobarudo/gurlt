@@ -46,6 +46,10 @@ gurlt -m 10 --connect-timeout 3.5 https://httpbin.org/delay/2
 # Insecure SSL connections and Proxy
 gurlt -k -x http://localhost:8080 https://localhost:8443/
 
+# Save response body directly to a file (-o, --output)
+gurlt -o download.png https://httpbin.org/image/png
+gurlt -o response.json https://httpbin.org/json
+
 # Standard cURL flags
 gurlt -X POST -H "Authorization: Bearer token" -d '{"test":123}' https://httpbin.org/post
 ```
@@ -87,7 +91,8 @@ Press `Ctrl+O` from the main view to open the options modal and configure advanc
 - `-x`: Specify HTTP/HTTPS proxy URL
 - `-m`: Specify transfer timeout in seconds
 - `--bearer`: Configure OAuth 2.0 / Bearer token (syncs directly with Authorization headers)
-- View current configuration (`--format`, `--connect-timeout`, masked `--bearer`, `--log`, latency metrics, and extra CLI arguments)
+- `-o`: Specify output file to automatically save response body
+- View current configuration (`--format`, `--connect-timeout`, masked `--bearer`, `-o`, `--log`, latency metrics, and extra CLI arguments)
 
 Changes made in the modal are immediately reflected in the live `💻 cURL:` preview and copied with `Ctrl+A`.
 
@@ -116,6 +121,14 @@ Directly specify Bearer tokens without manually formatting `Authorization: Beare
 - **Options Modal (`Ctrl+O`)**: Press Space on "Bearer Token" to enter or edit tokens. Updates immediately sync with the Headers textarea and the live cURL preview.
 - Clearing the token in the modal cleanly removes the header.
 
+**10. Save Response to File (`-o, --output <file>`)**
+
+Automatically save response body directly to disk:
+- **CLI Flag**: `-o, --output <filename>` (e.g. `gurlt -o download.png https://example.com/image.png`).
+- **Options Modal (`Ctrl+O`)**: View and edit the output file directly in the modal. Syncs with the live cURL preview.
+- **Binary Data & Viewport Protection**: When receiving binary payloads (images, PDFs, ZIPs), `gurlt` prevents terminal and viewport corruption by safely writing intact bytes to the file while displaying a formatted descriptor `[Binary data: <size>]` in the TUI.
+- **Visual Notification**: Shows a confirmation badge `[💾 Saved to <filename> (<size>)]` upon successful transfer.
+
 ## ⌨️ Keybindings
 
 ### Main View
@@ -137,8 +150,8 @@ Directly specify Bearer tokens without manually formatting `Authorization: Beare
 | Key | Action |
 | --- | --- |
 | `j` / `k` (or `↓` / `↑`, `Tab`) | Move item |
-| `Space` | Toggle checkbox / Edit Proxy URL |
-| `Enter` / `Esc` | Finish editing Proxy URL |
+| `Space` | Toggle checkbox / Edit text field (Proxy, Timeout, Bearer, Output File) |
+| `Enter` / `Esc` | Finish editing text field |
 | `Esc` / `Ctrl+O` | Close Options Modal |
 
 ### Raw View (`Ctrl+R`)

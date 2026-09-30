@@ -114,6 +114,11 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 		bBearerInput.SetValue(initialBearer)
 	}
 
+	oInput := textinput.New()
+	oInput.Placeholder = "output.json (empty for none)"
+	oInput.Prompt = "  File: "
+	oInput.CharLimit = 256
+
 	return Model{
 		methodInput:  m,
 		urlInput:     u,
@@ -125,6 +130,7 @@ func InitialModel(reqUrl, method, headerStr, body, format string, location bool,
 		searchInput:  srcInput,
 		filterInput:  fInput,
 		bearerInput:  bBearerInput,
+		outputInput:  oInput,
 		focusIndex:   1,
 		format:       format,
 		location:     location,

@@ -96,8 +96,21 @@ func (m Model) handleResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 	m.isLoading = false
 	m.responseStatus = msg.status
 	m.timing = msg.timing
+	m.lastBodyBytes = msg.bodyBytes
+	m.isBinaryResponse = isBinaryContent(msg.bodyBytes)
+
 	if msg.err == nil {
-		m.normalContent, m.rawContent = msg.body, msg.rawContent
+		if m.isBinaryResponse {
+			sizeStr := formatBytes(len(msg.bodyBytes))
+			binDesc := fmt.Sprintf("[Binary data: %s (%d bytes)]", sizeStr, len(msg.bodyBytes))
+			if msg.outputFile != "" {
+				binDesc += fmt.Sprintf("\nSaved to: %s", msg.outputFile)
+			}
+			m.normalContent = binDesc
+			m.rawContent = msg.rawContent
+		} else {
+			m.normalContent, m.rawContent = msg.body, msg.rawContent
+		}
 		m.history = msg.history
 
 		if m.timing.Total > 0 && m.terminalHeight > 0 {
@@ -121,8 +134,20 @@ func (m Model) handleResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 				m.footerMsg = successStyle.Render(fmt.Sprintf(" [📝 Logged to %s]", m.logFile))
 			}
 		}
+
+		if msg.outputFile != "" {
+			saveInfo := successStyle.Render(fmt.Sprintf(" [💾 Saved to %s (%s)]", msg.outputFile, formatBytes(msg.savedBytes)))
+			if m.footerMsg != "" {
+				m.footerMsg += saveInfo
+			} else {
+				m.footerMsg = saveInfo
+			}
+		}
 	} else {
 		m.normalContent = errorStyle.Render(fmt.Sprintf("Error: %v", msg.err))
+		if msg.outputFile != "" {
+			m.footerMsg = errorStyle.Render(fmt.Sprintf(" [❌ Save failed: %v]", msg.err))
+		}
 	}
 
 	if m.jsonPathQuery != "" && msg.err == nil {
@@ -154,8 +179,17 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			filename := strings.TrimSpace(m.saveInput.Value())
 			if filename != "" {
-				os.WriteFile(filename, []byte(m.activeContent()), 0644)
-				m.footerMsg = successStyle.Render(" [✅ Saved!]")
+				var dataToWrite []byte
+				if m.isBinaryResponse && len(m.lastBodyBytes) > 0 && m.filteredContent == "" {
+					dataToWrite = m.lastBodyBytes
+				} else {
+					dataToWrite = []byte(m.activeContent())
+				}
+				if err := os.WriteFile(filename, dataToWrite, 0644); err != nil {
+					m.footerMsg = errorStyle.Render(fmt.Sprintf(" [❌ %v]", err))
+				} else {
+					m.footerMsg = successStyle.Render(" [✅ Saved!]")
+				}
 				m.isSaving = false
 				m.saveInput.Blur()
 				return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return clearMsg{} })
@@ -269,6 +303,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.proxyInput.Blur()
 		m.timeoutInput.Blur()
 		m.bearerInput.Blur()
+		m.outputInput.Blur()
 		m.bearerInput.SetValue(extractBearerToken(m.headerInput.Value()))
 		return m, nil
 	case "tab":
@@ -331,6 +366,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "s":
 		if m.showRawView {
 			m.isSaving = true
+			if m.saveInput.Value() == "" && strings.TrimSpace(m.outputInput.Value()) != "" {
+				m.saveInput.SetValue(strings.TrimSpace(m.outputInput.Value()))
+			}
 			m.saveInput.Focus()
 			return m, textinput.Blink
 		}
@@ -365,6 +403,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.isLoading = true
 			m.footerMsg = ""
 			m.responseView.SetContent(infoStyle.Render("⏳ Loading..."))
+			outputFile := strings.TrimSpace(m.outputInput.Value())
 			opts := client.RequestOptions{
 				Method:         m.methodInput.Value(),
 				URL:            m.urlInput.Value(),
@@ -376,6 +415,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				Proxy:          strings.TrimSpace(m.proxyInput.Value()),
 				MaxTime:        m.maxTime,
 				ConnectTimeout: m.connectTimeout,
+				OutputFile:     outputFile,
 			}
 			return m, sendRequest(opts, m.BuildCurlCmd())
 		}
@@ -484,26 +524,42 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 4. モーダル内の項目選択モードの処理
+	// 4. Output File入力欄を編集中（Focused）の場合の処理
+	if m.outputInput.Focused() {
+		switch msg.String() {
+		case "esc", "enter":
+			m.outputInput.Blur()
+			return m, nil
+		case "ctrl+c":
+			return m, tea.Quit
+		default:
+			var cmd tea.Cmd
+			m.outputInput, cmd = m.outputInput.Update(msg)
+			return m, cmd
+		}
+	}
+
+	// 5. モーダル内の項目選択モードの処理
 	switch msg.String() {
 	case "esc", "ctrl+o":
 		m.showOptionsModal = false
 		m.proxyInput.Blur()
 		m.timeoutInput.Blur()
 		m.bearerInput.Blur()
+		m.outputInput.Blur()
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
 	case "j", "down", "tab":
 		m.optionsCursor++
-		if m.optionsCursor > 5 {
+		if m.optionsCursor > 6 {
 			m.optionsCursor = 0
 		}
 		return m, nil
 	case "k", "up", "shift+tab":
 		m.optionsCursor--
 		if m.optionsCursor < 0 {
-			m.optionsCursor = 5
+			m.optionsCursor = 6
 		}
 		return m, nil
 	case " ", "enter":
@@ -522,6 +578,9 @@ func (m Model) handleOptionsModalKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		case 5:
 			cmd := m.bearerInput.Focus()
+			return m, cmd
+		case 6:
+			cmd := m.outputInput.Focus()
 			return m, cmd
 		}
 		return m, nil
